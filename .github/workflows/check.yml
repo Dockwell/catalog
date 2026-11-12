@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Checks every entry, and every image an entry names, as a Dockwell server reads
+# this repository, so nothing merges that an install would leave out.
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Entries
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: catalog
+          persist-credentials: false
+      - name: Read which commit of Dockwell checks
+        id: dockwell
+        run: |
+          commit=$(tr -d '[:space:]' < catalog/.github/dockwell-commit)
+          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error file=.github/dockwell-commit::It names no commit. Put a commit of Dockwell/dockwell there, in full."
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Dockwell/dockwell
+          ref: ${{ steps.dockwell.outputs.commit }}
+          path: dockwell
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: dockwell/go.mod
+          cache-dependency-path: dockwell/go.sum
+      - name: Check every entry as a server reads it
+        working-directory: dockwell
+        run: go run ./cmd/dockwell-catalog check ../catalog/entries
