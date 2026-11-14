@@ -43,7 +43,7 @@ compose: |
         - data:/data/db
         - config:/data/configdb
       healthcheck:
-        test: ["CMD", "mongosh", "--quiet", "--norc", "--eval", "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+        test: ["CMD-SHELL", "HOME=/tmp exec mongosh --quiet --norc --eval \"quit(db.adminCommand('ping').ok ? 0 : 1)\""]
         interval: 5s
         timeout: 5s
         retries: 30
