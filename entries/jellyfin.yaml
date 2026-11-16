@@ -22,8 +22,8 @@ screenshots:
     caption: "Browse a Jellyfin media library"
     source: https://raw.githubusercontent.com/jellyfin/jellyfin.org/4acfc64a884ff59aa6b7329724b7c325ddb4580e/static/images/screenshots/home/10.8-library.png
 category: media
-version: "12.3"
-release: 3
+version: "12.4"
+release: 4
 homepage: https://jellyfin.org
 license: AGPL-3.0-only
 appLicense: GPL-2.0-only
@@ -52,7 +52,7 @@ inputs:
 compose: |
   services:
     jellyfin:
-      image: jellyfin/jellyfin:12.3@sha256:2038fe038ab3876a80f6e7b7e0aef6607b032c7dc0c9b3ad3296d0b2eba3bbb5
+      image: jellyfin/jellyfin:12.4@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771
       restart: unless-stopped
       ports:
         - "127.0.0.1:${PORT}:8096"
