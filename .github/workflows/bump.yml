@@ -126,50 +126,73 @@ jobs:
           # holds comes off as its pull request is updated.
           reasons=("major" "past its level" "within its wait" "not corroborated" "drops a platform" "signature unchecked" "majors in order" "unread")
           count=$(jq '.bumps | length' "$BUMPS/bumps.json")
+          # Each bump on its own: one that fails is named, and the rest still go.
+          failed=()
           for i in $(seq 0 $((count - 1))); do
             b=$(jq -c ".bumps[$i]" "$BUMPS/bumps.json")
-            entry=$(jq -r .entry <<< "$b")
             branch=$(jq -r .branch <<< "$b")
-            title=$(jq -r .title <<< "$b")
-            patch=$(jq -r .patch <<< "$b")
-            # Only a bump's own branches, which the App alone writes.
-            if [[ ! "$entry" =~ ^[a-z0-9-]+$ || ( "$branch" != "bump/$entry" && "$branch" != "bump/$entry-major" ) || "$patch" == */* ]]; then
-              echo "::error::bumps.json names $branch and $patch, which aren't a bump's"
-              exit 1
-            fi
-            jq -r .body <<< "$b" > "$RUNNER_TEMP/body.md"
-            git checkout -q -B "$branch" origin/main
-            git apply --index "$BUMPS/$patch"
-            # The patch moves its entry's file and nothing else: no other path, no new
-            # or deleted file, no mode or link, whatever the job that wrote it ran.
-            if [[ "$(git diff --cached --name-status HEAD)" != $'M\tentries/'"$entry"'.yaml' || -n "$(git diff --cached --summary HEAD)" ]]; then
-              echo "::error::$patch changes more than entries/$entry.yaml, so it isn't pushed"
-              exit 1
-            fi
-            git "${as[@]}" commit -q -m "$title"
-            if git rev-parse -q --verify "origin/$branch" > /dev/null && git diff --quiet "origin/$branch" HEAD; then
-              echo "$branch: no change"
-            else
-              git push -q --force origin "HEAD:refs/heads/$branch"
-            fi
-            labels=()
-            while IFS= read -r label; do
-              gh label create "$label" --force --color ededed > /dev/null
-              labels+=(--add-label "$label")
-            done < <(jq -r '.labels[]' <<< "$b")
-            # The App's own pull request of this branch, never a fork's of the same name.
-            number=$(gh pr list --head "$branch" --app "$SLUG" --state open --json number,isCrossRepository \
-              --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
-            if [[ -n "$number" ]]; then
-              gone=()
-              for reason in "${reasons[@]}"; do
-                if ! jq -e --arg r "$reason" '.labels | index($r)' <<< "$b" > /dev/null; then
-                  gone+=(--remove-label "$reason")
-                fi
-              done
-              gh pr edit "$number" --title "$title" --body-file "$RUNNER_TEMP/body.md" "${labels[@]}" "${gone[@]}"
-            else
-              labels=("${labels[@]/--add-label/--label}")
-              gh pr create --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md" "${labels[@]}"
+            set +e
+            (
+              set -euo pipefail
+              entry=$(jq -r .entry <<< "$b")
+              title=$(jq -r .title <<< "$b")
+              patch=$(jq -r .patch <<< "$b")
+              # Only a bump's own branches, which the App alone writes.
+              if [[ ! "$entry" =~ ^[a-z0-9-]+$ || ( "$branch" != "bump/$entry" && "$branch" != "bump/$entry-major" ) || "$patch" == */* ]]; then
+                echo "::error::bumps.json names $branch and $patch, which aren't a bump's"
+                exit 1
+              fi
+              jq -r .body <<< "$b" > "$RUNNER_TEMP/body.md"
+              git reset -q --hard
+              # Onto main as it is now; where main has moved under the patch, onto
+              # the commit the read job made it from, which the pull request shows.
+              git checkout -q -B "$branch" origin/main
+              if ! git apply --index "$BUMPS/$patch" 2> /dev/null; then
+                git reset -q --hard
+                git checkout -q -B "$branch" "$GITHUB_SHA"
+                git apply --index "$BUMPS/$patch"
+              fi
+              # The patch moves its entry's file and nothing else: no other path, no new
+              # or deleted file, no mode or link, whatever the job that wrote it ran.
+              if [[ "$(git diff --cached --name-status HEAD)" != $'M\tentries/'"$entry"'.yaml' || -n "$(git diff --cached --summary HEAD)" ]]; then
+                echo "::error::$patch changes more than entries/$entry.yaml, so it isn't pushed"
+                exit 1
+              fi
+              git "${as[@]}" commit -q -m "$title"
+              if git rev-parse -q --verify "origin/$branch" > /dev/null && git diff --quiet "origin/$branch" HEAD; then
+                echo "$branch: no change"
+              else
+                git push -q --force origin "HEAD:refs/heads/$branch"
+              fi
+              labels=()
+              while IFS= read -r label; do
+                gh label create "$label" --force --color ededed > /dev/null
+                labels+=(--add-label "$label")
+              done < <(jq -r '.labels[]' <<< "$b")
+              # The App's own pull request of this branch, never a fork's of the same name.
+              number=$(gh pr list --head "$branch" --app "$SLUG" --state open --json number,isCrossRepository \
+                --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
+              if [[ -n "$number" ]]; then
+                gone=()
+                for reason in "${reasons[@]}"; do
+                  if ! jq -e --arg r "$reason" '.labels | index($r)' <<< "$b" > /dev/null; then
+                    gone+=(--remove-label "$reason")
+                  fi
+                done
+                gh pr edit "$number" --title "$title" --body-file "$RUNNER_TEMP/body.md" "${labels[@]}" "${gone[@]}"
+              else
+                labels=("${labels[@]/--add-label/--label}")
+                gh pr create --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md" "${labels[@]}"
+              fi
+            )
+            done_ok=$?
+            set -e
+            if ((done_ok != 0)); then
+              echo "::error::$branch wasn't opened or updated; the others go on"
+              failed+=("$branch")
             fi
           done
+          if ((${#failed[@]} > 0)); then
+            echo "::error::Not opened or updated: ${failed[*]}"
+            exit 1
+          fi
