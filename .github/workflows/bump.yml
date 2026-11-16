@@ -128,17 +128,24 @@ jobs:
           count=$(jq '.bumps | length' "$BUMPS/bumps.json")
           for i in $(seq 0 $((count - 1))); do
             b=$(jq -c ".bumps[$i]" "$BUMPS/bumps.json")
+            entry=$(jq -r .entry <<< "$b")
             branch=$(jq -r .branch <<< "$b")
             title=$(jq -r .title <<< "$b")
             patch=$(jq -r .patch <<< "$b")
             # Only a bump's own branches, which the App alone writes.
-            if [[ ! "$branch" =~ ^bump/[a-z0-9-]+$ || "$patch" == */* ]]; then
+            if [[ ! "$entry" =~ ^[a-z0-9-]+$ || ( "$branch" != "bump/$entry" && "$branch" != "bump/$entry-major" ) || "$patch" == */* ]]; then
               echo "::error::bumps.json names $branch and $patch, which aren't a bump's"
               exit 1
             fi
             jq -r .body <<< "$b" > "$RUNNER_TEMP/body.md"
             git checkout -q -B "$branch" origin/main
             git apply --index "$BUMPS/$patch"
+            # The patch moves its entry's file and nothing else: no other path, no new
+            # or deleted file, no mode or link, whatever the job that wrote it ran.
+            if [[ "$(git diff --cached --name-status HEAD)" != $'M\tentries/'"$entry"'.yaml' || -n "$(git diff --cached --summary HEAD)" ]]; then
+              echo "::error::$patch changes more than entries/$entry.yaml, so it isn't pushed"
+              exit 1
+            fi
             git "${as[@]}" commit -q -m "$title"
             if git rev-parse -q --verify "origin/$branch" > /dev/null && git diff --quiet "origin/$branch" HEAD; then
               echo "$branch: no change"
