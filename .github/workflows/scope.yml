@@ -1,0 +1,140 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# bump scope (Dockwell's ADR 0100): whether a pull request is one the catalog could
+# take without a person. It runs from main's own definition, reads the diff alone,
+# and never checks out or runs the head: the head's commit is fetched as objects, and
+# Dockwell's dockwell-catalog, at the commit main's .github/dockwell-commit names,
+# reads them. Its result is a commit status on the head, "bump scope", which a
+# ruleset can require. A person's pull request passes, as the review rule decides
+# it. One from the bump App passes only where it's the step the bump makes now with
+# nothing waiting for a person, or a maintainer approved its head: their review runs
+# this again (review.yml).
+name: Bump scope
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+  workflow_run:
+    workflows: [Review]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: scope-${{ github.event.pull_request.number || github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+env:
+  BUMP_APP: app/dockwell-catalog-bump
+
+jobs:
+  scope:
+    name: Bump scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Which pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          if [[ ! "$NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "No pull request of this repository to read."
+            echo "number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" > "$RUNNER_TEMP/pr.json"
+          jq -r '"number=\(.number)", "head=\(.head.sha)", "base=\(.base.sha)", "branch=\(.head.ref)", "author=\(if .user.type == "Bot" then "app/" + (.user.login | sub("\\[bot\\]$"; "")) else .user.login end)", "cross=\(.head.repo.full_name != .base.repo.full_name)"' \
+            "$RUNNER_TEMP/pr.json" >> "$GITHUB_OUTPUT"
+          jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/body.md"
+      - name: Pending
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ steps.pr.outputs.head }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$HEAD" -f state=pending -f context="bump scope" \
+            -f description="Reading the diff" > /dev/null
+      # main's own files: the head is never checked out.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.pr.outputs.number != ''
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: catalog
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The head's commit, as objects alone
+        if: steps.pr.outputs.number != ''
+        env:
+          NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD: ${{ steps.pr.outputs.head }}
+        run: |
+          git -C catalog fetch -q --no-tags origin "refs/pull/$NUMBER/head"
+          git -C catalog cat-file -e "$HEAD^{commit}"
+      - name: Which commit of Dockwell reads it
+        if: steps.pr.outputs.number != ''
+        id: dockwell
+        run: |
+          commit=$(tr -d '[:space:]' < catalog/.github/dockwell-commit)
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::main's .github/dockwell-commit names no commit"; exit 1; }
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.pr.outputs.number != ''
+        with:
+          repository: Dockwell/dockwell
+          ref: ${{ steps.dockwell.outputs.commit }}
+          path: dockwell
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.pr.outputs.number != ''
+        with:
+          go-version-file: dockwell/go.mod
+          cache-dependency-path: dockwell/go.sum
+      - name: Whether a maintainer approved its head
+        if: steps.pr.outputs.number != ''
+        id: approved
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD: ${{ steps.pr.outputs.head }}
+        run: |
+          approved=false
+          # Each reviewer's latest review that approves or asks for changes, at the head.
+          while read -r reviewer; do
+            permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$reviewer/permission" --jq .permission)
+            if [[ "$permission" == admin || "$permission" == maintain || "$permission" == write ]]; then
+              approved=true
+            fi
+          done < <(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/reviews" |
+            jq -rs --arg head "$HEAD" 'add // [] | map(select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED"))
+              | group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state == "APPROVED" and .commit_id == $head)) | .[].user.login')
+          echo "approved=$approved" >> "$GITHUB_OUTPUT"
+      - name: Bump scope
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Read-only, for GitHub's rate as it reads the app's releases again.
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ steps.pr.outputs.head }}
+          BASE_SHA: ${{ steps.pr.outputs.base }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          AUTHOR: ${{ steps.pr.outputs.author }}
+          CROSS: ${{ steps.pr.outputs.cross }}
+          APPROVED: ${{ steps.approved.outputs.approved }}
+        run: |
+          flags=(--catalog "$GITHUB_WORKSPACE/catalog" --base "$BASE_SHA" --head "$HEAD" --author "$AUTHOR" --app "$BUMP_APP"
+            --branch "$BRANCH" --body "$RUNNER_TEMP/body.md")
+          [[ "$CROSS" != true ]] || flags+=(--cross-repository)
+          [[ "$APPROVED" != true ]] || flags+=(--approved)
+          if ! (cd dockwell && go run ./cmd/dockwell-catalog bump scope "${flags[@]}") > "$RUNNER_TEMP/scope.json"; then
+            jq -n '{state: "error", description: "bump scope couldn'"'"'t read it. Run it again"}' > "$RUNNER_TEMP/scope.json"
+          fi
+          jq -r '.why[]? | "- " + .' "$RUNNER_TEMP/scope.json" >> "$GITHUB_STEP_SUMMARY"
+          state=$(jq -r .state "$RUNNER_TEMP/scope.json")
+          description=$(jq -r .description "$RUNNER_TEMP/scope.json")
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$HEAD" -f state="$state" -f context="bump scope" \
+            -f description="$description" -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
+          echo "bump scope: $state, $description"
