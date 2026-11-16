@@ -13,7 +13,10 @@
 name: Bump scope
 
 on:
+  # Pull requests into main alone: a copy of this on another branch, a bump/ branch
+  # cut before a fix included, never judges a commit (#726's slice 2 re-check, N1).
   pull_request_target:
+    branches: [main]
     types: [opened, synchronize, reopened, edited]
   workflow_run:
     workflows: [Review]
