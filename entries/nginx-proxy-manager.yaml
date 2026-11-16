@@ -23,7 +23,7 @@ screenshots:
     source: https://raw.githubusercontent.com/NginxProxyManager/nginx-proxy-manager/5b7e34eb67d35aa91dd3fe3818525caa42cfeca5/docs/src/public/screenshots/light/03_dashboard.png
 category: networking
 version: "2.16.0"
-release: 3
+release: 4
 homepage: https://nginxproxymanager.com
 license: AGPL-3.0-only
 appLicense: MIT
@@ -49,11 +49,13 @@ inputs:
     hint: Choose 80 for public sites, once nothing else holds it.
     type: INPUT_TYPE_PORT
     defaultValue: "8880"
+    public: true
   - name: HTTPS_PORT
     label: HTTPS port
     hint: Choose 443 for public sites, once nothing else holds it.
     type: INPUT_TYPE_PORT
     defaultValue: "8443"
+    public: true
   - name: ADMIN_PASSWORD
     setOnce: true
     label: Console password
@@ -69,7 +71,7 @@ compose: |
         INITIAL_ADMIN_EMAIL: ${ADMIN_EMAIL}
         INITIAL_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ports:
-        - "${ADMIN_PORT}:81"
+        - "127.0.0.1:${ADMIN_PORT}:81"
         - "${HTTP_PORT}:80"
         - "${HTTPS_PORT}:443"
       volumes:
