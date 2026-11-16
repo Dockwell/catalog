@@ -4,7 +4,9 @@
 # and never checks out or runs the head: the head's commit is fetched as objects, and
 # Dockwell's dockwell-catalog, at the commit main's .github/dockwell-commit names,
 # reads them. Its result is a commit status on the head, "bump scope", which a
-# ruleset can require. A person's pull request passes, as the review rule decides
+# ruleset can require. It judges the commit, not the pull request that started the
+# run: a commit that is the App's head anywhere is judged as the App's bump
+# (bump scope-whose). A person's pull request passes, as the review rule decides
 # it. One from the bump App passes only where it's the step the bump makes now with
 # nothing waiting for a person, or a maintainer approved its head: their review runs
 # this again (review.yml).
@@ -46,10 +48,15 @@ jobs:
             echo "number=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" > "$RUNNER_TEMP/pr.json"
-          jq -r '"number=\(.number)", "head=\(.head.sha)", "base=\(.base.sha)", "branch=\(.head.ref)", "author=\(if .user.type == "Bot" then "app/" + (.user.login | sub("\\[bot\\]$"; "")) else .user.login end)", "cross=\(.head.repo.full_name != .base.repo.full_name)"' \
-            "$RUNNER_TEMP/pr.json" >> "$GITHUB_OUTPUT"
-          jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/body.md"
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" > "$RUNNER_TEMP/started.json"
+          head=$(jq -r .head.sha "$RUNNER_TEMP/started.json")
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::pull request $NUMBER has no head commit"; exit 1; }
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          # Every pull request with this commit as its head, and this repository's
+          # bump branches: a commit status shows on each, so the commit is judged.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$head/pulls" | jq -s 'add // []' > "$RUNNER_TEMP/open.json"
+          git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 'refs/heads/bump/*' > "$RUNNER_TEMP/branches.txt"
       - name: Pending
         if: steps.pr.outputs.number != ''
         env:
@@ -93,15 +100,39 @@ jobs:
         with:
           go-version-file: dockwell/go.mod
           cache-dependency-path: dockwell/go.sum
+      - name: What the commit is judged as
+        if: steps.pr.outputs.number != ''
+        id: whose
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ steps.pr.outputs.head }}
+        run: |
+          (cd dockwell && go run ./cmd/dockwell-catalog bump scope-whose --head "$HEAD" --app "$BUMP_APP" \
+            --started "$RUNNER_TEMP/started.json" --open "$RUNNER_TEMP/open.json" --branches "$RUNNER_TEMP/branches.txt") > "$RUNNER_TEMP/whose.json"
+          jq -r '"number=\(.number)", "branch=\(.branch)", "author=\(.author)", "cross=\(.cross_repository)"' "$RUNNER_TEMP/whose.json" >> "$GITHUB_OUTPUT"
+          # Its base and body are those of the pull request it's judged as.
+          number=$(jq -r .number "$RUNNER_TEMP/whose.json")
+          if [[ "$number" != 0 ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$number" > "$RUNNER_TEMP/pr.json"
+          else
+            jq '.body = ""' "$RUNNER_TEMP/started.json" > "$RUNNER_TEMP/pr.json"
+          fi
+          echo "base=$(jq -r .base.sha "$RUNNER_TEMP/pr.json")" >> "$GITHUB_OUTPUT"
+          jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/body.md"
       - name: Whether a maintainer approved its head
         if: steps.pr.outputs.number != ''
         id: approved
         env:
           GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ steps.pr.outputs.number }}
+          NUMBER: ${{ steps.whose.outputs.number }}
           HEAD: ${{ steps.pr.outputs.head }}
         run: |
           approved=false
+          # A bump branch with no pull request open has no approvals to read.
+          if [[ "$NUMBER" == 0 ]]; then
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # Each reviewer's latest review that approves or asks for changes, at the head.
           while read -r reviewer; do
             permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$reviewer/permission" --jq .permission)
@@ -119,10 +150,10 @@ jobs:
           # Read-only, for GitHub's rate as it reads the app's releases again.
           GITHUB_TOKEN: ${{ github.token }}
           HEAD: ${{ steps.pr.outputs.head }}
-          BASE_SHA: ${{ steps.pr.outputs.base }}
-          BRANCH: ${{ steps.pr.outputs.branch }}
-          AUTHOR: ${{ steps.pr.outputs.author }}
-          CROSS: ${{ steps.pr.outputs.cross }}
+          BASE_SHA: ${{ steps.whose.outputs.base }}
+          BRANCH: ${{ steps.whose.outputs.branch }}
+          AUTHOR: ${{ steps.whose.outputs.author }}
+          CROSS: ${{ steps.whose.outputs.cross }}
           APPROVED: ${{ steps.approved.outputs.approved }}
         run: |
           flags=(--catalog "$GITHUB_WORKSPACE/catalog" --base "$BASE_SHA" --head "$HEAD" --author "$AUTHOR" --app "$BUMP_APP"
