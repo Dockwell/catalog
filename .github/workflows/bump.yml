@@ -67,7 +67,9 @@ jobs:
         run: |
           # The App's own pull requests alone: a fork's, of a branch named bump/
           # too, could otherwise say when anything was first seen.
-          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json headRefName,body,author,isCrossRepository \
+          # --app lists the App's alone, so others' can't push them out of the 200;
+          # its prefix match on head doesn't matter here, as no head is named.
+          gh pr list --repo "$GITHUB_REPOSITORY" --app "$BUMP_APP" --state open --limit 200 --json headRefName,body,author,isCrossRepository \
             --jq '.[] | select((.isCrossRepository | not) and .author.login == ("app/" + env.BUMP_APP) and (.headRefName | startswith("bump/"))) | {body}' \
             | (cd dockwell && go run ./cmd/dockwell-catalog bump --seen-from-bodies) > seen.json
       - name: Read each entry's images, and write a patch for each bump
@@ -164,6 +166,11 @@ jobs:
               # the commit the read job made it from, which the pull request shows.
               git checkout -q -B "$branch" origin/main
               if ! git apply --index "$BUMPS/$patch" 2> /dev/null; then
+                # A bump that merged during the run is on main already: nothing to reopen.
+                if git apply --reverse --check "$BUMPS/$patch" 2> /dev/null; then
+                  echo "$branch: main has it already"
+                  exit 0
+                fi
                 git reset -q --hard
                 git checkout -q -B "$branch" "$GITHUB_SHA"
                 git apply --index "$BUMPS/$patch"
