@@ -125,18 +125,22 @@ jobs:
           # Each reason a bump waits for a person, as a label: one that no longer
           # holds comes off as its pull request is updated.
           reasons=("major" "past its level" "within its wait" "tag pushed again" "not corroborated" "drops a platform" "signature unchecked" "majors in order" "unread")
-          # A bump's own labels alone: bump and those reasons. Each is made once where
-          # it's missing, and one there already keeps its colour.
-          mapfile -t existing < <(gh label list --limit 500 --json name --jq '.[].name')
+          # A bump's own labels alone: bump and those reasons.
           while IFS= read -r label; do
             if ! printf '%s\n' bump "${reasons[@]}" | grep -qxF -- "$label"; then
               echo "::error::bumps.json names the label $label, which isn't a bump's"
               exit 1
             fi
+          done < <(jq -r '[.bumps[].labels[]] | unique | .[]' "$BUMPS/bumps.json")
+          # Every one is made before the loop where it's missing, one there already
+          # keeping its colour: gh pr edit can't take off a label the repository
+          # hasn't got, as it does each reason that no longer holds.
+          mapfile -t existing < <(gh label list --limit 500 --json name --jq '.[].name')
+          for label in bump "${reasons[@]}"; do
             if ! printf '%s\n' "${existing[@]}" | grep -qxF -- "$label"; then
               gh label create --color ededed -- "$label" > /dev/null
             fi
-          done < <(jq -r '[.bumps[].labels[]] | unique | .[]' "$BUMPS/bumps.json")
+          done
           count=$(jq '.bumps | length' "$BUMPS/bumps.json")
           # Each bump on its own: one that fails is named, and the rest still go.
           failed=()
