@@ -19,8 +19,8 @@ screenshots:
     caption: "Sessions in the Hermes Agent dashboard"
     source: https://raw.githubusercontent.com/NousResearch/hermes-agent/e782db3f00b36ab03d60977d1454e9fbdbdebbee/website/static/img/dashboard/admin-sessions.png
 category: ai
-version: "0.22.5"
-release: 1
+version: "0.22.7"
+release: 2
 homepage: https://hermes-agent.nousresearch.com
 license: AGPL-3.0-only
 appLicense: MIT
@@ -60,7 +60,7 @@ inputs:
 compose: |
   services:
     hermes:
-      image: nousresearch/hermes-agent:v0.22.5@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d
+      image: nousresearch/hermes-agent:v0.22.7@sha256:e6d81ae52ebf6a43efa529701405509f20054ba818f179ddd748bed4f8af584c
       restart: unless-stopped
       environment:
         HERMES_DASHBOARD: "1"
