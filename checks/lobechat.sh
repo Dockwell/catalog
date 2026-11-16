@@ -7,6 +7,10 @@
 # and check_lobechat upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[lobechat]="1.143.2 lobehub/lobe-chat:1.143.2@sha256:65793dfe2378eecea89c335c01cb1094c240eb67047902859140e0f0b1a15069"
+
 # What a person gives its install, as dockwell catalog install takes it.
 given[lobechat]="OPENAI_API_KEY"
 given_env[lobechat]="OPENAI_API_KEY=catalog-test-provider-key-never-sent-outside-this-container"

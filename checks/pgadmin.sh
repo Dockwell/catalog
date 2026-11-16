@@ -7,6 +7,10 @@
 # and check_pgadmin upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[pgadmin]="9.16 dpage/pgadmin4:9.16@sha256:40fa840c5bb7c8463957f1255b01283732c2d8c9396a956d180f8e6c296753b3"
+
 # What a person gives its install, as dockwell catalog install takes it.
 given[pgadmin]="ADMIN_EMAIL=owner@example.com"
 

@@ -7,6 +7,10 @@
 # and check_uptime-kuma upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[uptime-kuma]="2.5.7 louislam/uptime-kuma:2.5.7@sha256:4b95dbe7ac5343b768f8e04e3035ccd59997872b1a35ab9b0f082d2cc279070e"
+
 # kuma_emit sends Uptime Kuma one event over Socket.IO's HTTP polling, as its own pages
 # talk to it, and prints what it acknowledged. Its sign-in and setup have no other API.
 kuma_emit() {

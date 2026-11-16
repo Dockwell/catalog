@@ -7,6 +7,10 @@
 # and check_gitea upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[gitea]="28.1.0 gitea/gitea:28.1.0@sha256:f505a0d3a41323b786e05942fc7a4075e07ae7c169fd9485649aa55ee543a21a"
+
 check_gitea() {
   local gitea port said banner key
   gitea=$(container gitea)

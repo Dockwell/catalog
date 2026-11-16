@@ -7,6 +7,10 @@
 # and check_adminer upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[adminer]="6.1.2 adminer:6.1.2@sha256:251295c1cd51d3889f1c42ffa4864b24eeab51f0caf395cfe5bf4726c5ec9a2a"
+
 # adminer_sign_in signs in to Adminer, as scripts/docker-e2e.sh does, to PostgreSQL at a
 # server Adminer reaches, and says how it went: in, or refused, by what the page says.
 adminer_sign_in() {

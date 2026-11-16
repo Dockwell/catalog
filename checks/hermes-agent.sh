@@ -7,6 +7,10 @@
 # and check_hermes-agent upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[hermes-agent]="0.22.4 nousresearch/hermes-agent:v0.22.4@sha256:7a69201726bc64db2072a1371557137c23312d29705cda2b8ea2a0214a50a4cf"
+
 check_hermes-agent() {
   local port api_port base password key jar said status
   port=$(value PORT)

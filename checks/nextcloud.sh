@@ -7,6 +7,10 @@
 # and check_nextcloud upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[nextcloud]="35.0.1 nextcloud:35.0.1-apache@sha256:8f2f0e93aca5e9457019933936dea1f313052e72c696b4aecb31580a208b859f"
+
 # What a person gives its install, as dockwell catalog install takes it.
 given[nextcloud]="DOMAIN=cloud.example.com"
 

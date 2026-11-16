@@ -7,6 +7,10 @@
 # and check_linkding upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[linkding]="1.46.2 sissbruecker/linkding:1.46.2@sha256:0c0a9a04c7ebd644293c37f98710872fe7cdff0ea1ff7fd9be4d235e4c4678d2"
+
 # A real browser login proves the generated password works. The API is reached with
 # the same session and CSRF cookie, so no token needs to be read from its database.
 check_linkding() {

@@ -7,6 +7,10 @@
 # and check_vaultwarden upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[vaultwarden]="1.37.3 vaultwarden/server:1.37.3@sha256:1587c45feaa479f1f5e8af3b00eded36bff77bcf1880cf8dbf0541706dd470e0"
+
 # vaultwarden_sign_in signs in to Vaultwarden as Bitwarden's apps do, with what stands
 # for the master password's hash, and prints the status and what it answered.
 vaultwarden_sign_in() {

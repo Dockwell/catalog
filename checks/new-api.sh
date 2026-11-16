@@ -7,6 +7,10 @@
 # and check_new-api upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[new-api]="0.13.1-patch.1 calciumion/new-api:v0.13.1-patch.1@sha256:95fab02db3925f8028f8f43b333734893a3c568ac555fa3b5df74650286d9ce3"
+
 check_new-api() {
   local port base password jar said user
   port=$(value PORT)

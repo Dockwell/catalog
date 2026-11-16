@@ -7,6 +7,10 @@
 # and check_ghost upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[ghost]="6.71.0 ghost:6.71.0@sha256:00032f15726204565bf799ac272ee6fef588547cce50bedd38de3db55272c053"
+
 # What a person gives its install, as dockwell catalog install takes it.
 given[ghost]="URL=https://blog.example.com"
 

@@ -7,6 +7,9 @@
 # and check_mongo upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# Its one release before, 8.0.34, doesn't start on CI's runners (earliest below).
+upgrade_waived[mongo]="no MongoDB 8.0 before 8.0.38 starts on Linux 6.19 or newer, as CI's runners run (SERVER-121912); give it a before line once it pins 8.0.39 or later"
+
 # No MongoDB 8.0 before 8.0.38 starts on Linux 6.19 or newer, as CI's runners run
 # (SERVER-121912), so no release of the catalog's before it is proven from.
 earliest[mongo]=8.0.38

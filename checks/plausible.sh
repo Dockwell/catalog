@@ -7,6 +7,10 @@
 # and check_plausible upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[plausible]="3.2.0 ghcr.io/plausible/community-edition:v3.2.0@sha256:3d8af8d4a1be32c3dcc5e8dc01496639d945edd9963827e18abe984dd6bda086"
+
 check_plausible() {
   local plausible port said db events migrations tables jar token landed
   plausible=$(container plausible)

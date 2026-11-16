@@ -7,6 +7,10 @@
 # and check_wordpress upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[wordpress]="7.1.2 wordpress:7.1.2-apache@sha256:e04cf657f24889e96b5544828cdd5a92a0b51819f3e1899183f9be6ea0485edf"
+
 # wordpress_sign_in signs in to WordPress, and says how it answered and where it sends
 # you: its dashboard, or nowhere, as its login page says why on the page itself.
 wordpress_sign_in() {

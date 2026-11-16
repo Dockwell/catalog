@@ -7,6 +7,10 @@
 # and check_sftpgo upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
 
+# The release before, by its version and each image by digest, which an upgrade
+# is proven from where the catalog's history holds none of another version.
+before[sftpgo]="2.7.5 drakkan/sftpgo:v2.7.5@sha256:9011fe608d336d3daf6ed6224b16fd40443aab8f3335e0b20853d6a539c58738"
+
 check_sftpgo() {
   command -v sshpass >/dev/null || fail "the SFTPGo check needs sshpass, which its CI group installs"
   local port sftp_port base password said token transfer_dir status
