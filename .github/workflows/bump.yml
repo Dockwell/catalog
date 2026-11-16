@@ -124,7 +124,19 @@ jobs:
           as=(-c "user.name=${SLUG}[bot]" -c "user.email=${id}+${SLUG}[bot]@users.noreply.github.com")
           # Each reason a bump waits for a person, as a label: one that no longer
           # holds comes off as its pull request is updated.
-          reasons=("major" "past its level" "within its wait" "not corroborated" "drops a platform" "signature unchecked" "majors in order" "unread")
+          reasons=("major" "past its level" "within its wait" "tag pushed again" "not corroborated" "drops a platform" "signature unchecked" "majors in order" "unread")
+          # A bump's own labels alone: bump and those reasons. Each is made once where
+          # it's missing, and one there already keeps its colour.
+          mapfile -t existing < <(gh label list --limit 500 --json name --jq '.[].name')
+          while IFS= read -r label; do
+            if ! printf '%s\n' bump "${reasons[@]}" | grep -qxF -- "$label"; then
+              echo "::error::bumps.json names the label $label, which isn't a bump's"
+              exit 1
+            fi
+            if ! printf '%s\n' "${existing[@]}" | grep -qxF -- "$label"; then
+              gh label create --color ededed -- "$label" > /dev/null
+            fi
+          done < <(jq -r '[.bumps[].labels[]] | unique | .[]' "$BUMPS/bumps.json")
           count=$(jq '.bumps | length' "$BUMPS/bumps.json")
           # Each bump on its own: one that fails is named, and the rest still go.
           failed=()
@@ -166,7 +178,6 @@ jobs:
               fi
               labels=()
               while IFS= read -r label; do
-                gh label create "$label" --force --color ededed > /dev/null
                 labels+=(--add-label "$label")
               done < <(jq -r '.labels[]' <<< "$b")
               # The App's own pull request of this branch, never a fork's of the same name.
