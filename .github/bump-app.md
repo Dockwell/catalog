@@ -5,7 +5,7 @@ The Bump workflow (`.github/workflows/bump.yml`) opens its pull requests as a Gi
 ## 1. Make the App
 
 1. Open <https://github.com/organizations/Dockwell/settings/apps/new>.
-2. **GitHub App name:** `dockwell-catalog-bump`.
+2. **GitHub App name:** `dockwell-catalog-bump`, exactly. The workflow keeps only this App's own pull requests as bumps, by this name, so a fork's pull request from a branch named `bump/` is never read or edited as one.
 3. **Homepage URL:** `https://github.com/Dockwell/catalog`.
 4. **Webhook:** clear **Active**. The App receives no events.
 5. **Repository permissions:**
