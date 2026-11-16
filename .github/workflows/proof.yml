@@ -84,9 +84,13 @@ jobs:
           PICK: ${{ needs.pick.result }}
           PROOF: ${{ needs.proof.result }}
           FLOORED: ${{ needs.proof.outputs.floored }}
+          NOT_UPGRADED: ${{ needs.proof.outputs.not-upgraded }}
         run: |
           echo "Which entries: $PICK. Proof: $PROOF."
           if [[ -n "$FLOORED" ]]; then
             echo "::notice::Proven with the floor alone, as they have no checks/<id>.sh, so they don't merge by themselves: $FLOORED"
+          fi
+          if [[ -n "$NOT_UPGRADED" ]]; then
+            echo "::notice::No upgrade proven, as every earlier release is before the earliest their check runs, so they don't merge by themselves: $NOT_UPGRADED"
           fi
           [[ "$PICK" == success && ( "$PROOF" == success || "$PROOF" == skipped ) ]]
