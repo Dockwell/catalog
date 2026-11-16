@@ -19,8 +19,8 @@ screenshots:
     caption: "Bitwarden browser extension, a separate client compatible with Vaultwarden"
     source: https://raw.githubusercontent.com/bitwarden/clients/103de051270fb7156dbfdbb95ac2ab66722db267/apps/browser/store/locales/en/screenshots/Chrome/Chrome01.png
 category: security
-version: "1.37.4"
-release: 3
+version: "1.37.5"
+release: 4
 homepage: https://github.com/dani-garcia/vaultwarden
 license: AGPL-3.0-only
 appLicense: AGPL-3.0-only
@@ -49,7 +49,7 @@ inputs:
 compose: |
   services:
     vaultwarden:
-      image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+      image: vaultwarden/server:1.37.5@sha256:4fe17f415f90087377d37c755e0ea3cf189dcc6794e49cdd2a9adbb4937d9e1f
       restart: unless-stopped
       ports:
         - "127.0.0.1:${PORT}:80"
