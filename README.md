@@ -31,6 +31,16 @@ go run ./cmd/dockwell-catalog check ../catalog/entries
 
 It names each file a server would leave out, and why. `.github/dockwell-commit` is the commit of Dockwell that CI checks with.
 
+## Keeping apps current
+
+Every day at 10:00 UTC, the Bump workflow reads each entry's images from their registries and opens a pull request for each newer release an entry can move to, as Dockwell's [ADR 0100](https://github.com/Dockwell/dockwell/blob/main/docs/adr/0100-dockwells-catalog-keeps-its-apps-current.md) sets out:
+
+- `bump/<id>` takes the newest step within the entry's levels, `bump/<id>-major` the next step beyond them.
+- Each moves an image's tag and digest, the entry's `version` where that image gives it, and `release` by one, as text, so the file's comments stay.
+- Its labels say why it waits for a person: a major, a step past its level, a version still within its wait, nothing that corroborates it, or a platform it drops. For now every bump waits for a person.
+
+An entry that needs more than the defaults has a policy in `updates/<id>.yaml`, which a server never reads: which service's tag gives the `version`, and for each service its `level`, whether it `rebuilds`, who it's `signedBy`, whether its `majorsInOrder`, and versions to `hold`. Its schema is `dockwell-catalog bump --schema`, and CI checks it beside the entries. The App the workflow opens pull requests as is set up as `.github/bump-app.md` says.
+
 ## Licence
 
 The entries are AGPL-3.0-only, as Dockwell is: see [LICENSE](LICENSE). The images are the apps' own, and keep their own terms: see [entries/media/NOTICE.txt](entries/media/NOTICE.txt).

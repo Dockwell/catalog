@@ -1,0 +1,222 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Keeps the catalog's apps current (Dockwell's ADR 0100, slice 1): reads each entry's
+# images from their registries and opens a pull request for each newer release an
+# entry can move to, in two lanes, bump/<id> within its policy's levels and
+# bump/<id>-major beyond them. Nothing it opens merges by itself: a person reviews
+# and merges each.
+#
+# Two jobs. Read runs the pinned Dockwell with read access alone and no secret, and
+# writes patches. Write holds the bump App's token and runs no Dockwell code: git,
+# jq and gh apply the patches and open the pull requests, which, opened by the App,
+# start CI as one opened with the workflow's own token wouldn't.
+name: Bump
+
+on:
+  schedule:
+    # 10:00 UTC: 2:00 AM PST, 3:00 AM PDT for Vancouver.
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  # The bump App's slug, which .github/bump-app.md fixes: only its own pull requests,
+  # from branches of this repository, are a bump's. A fork's of the same name aren't.
+  BUMP_APP: dockwell-catalog-bump
+
+concurrency:
+  group: bump
+  cancel-in-progress: false
+
+jobs:
+  read:
+    name: Read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # To read when the open bumps first saw their versions, from their bodies.
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: catalog
+          persist-credentials: false
+      - name: Read which commit of Dockwell bumps
+        id: dockwell
+        run: |
+          commit=$(tr -d '[:space:]' < catalog/.github/dockwell-commit)
+          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error file=.github/dockwell-commit::It names no commit. Put a commit of Dockwell/dockwell there, in full."
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Dockwell/dockwell
+          ref: ${{ steps.dockwell.outputs.commit }}
+          path: dockwell
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: dockwell/go.mod
+          cache-dependency-path: dockwell/go.sum
+      - name: Read when each open bump first saw its version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The App's own pull requests alone: a fork's, of a branch named bump/
+          # too, could otherwise say when anything was first seen.
+          # --app lists the App's alone, so others' can't push them out of the 200;
+          # its prefix match on head doesn't matter here, as no head is named.
+          gh pr list --repo "$GITHUB_REPOSITORY" --app "$BUMP_APP" --state open --limit 200 --json headRefName,body,author,isCrossRepository \
+            --jq '.[] | select((.isCrossRepository | not) and .author.login == ("app/" + env.BUMP_APP) and (.headRefName | startswith("bump/"))) | {body}' \
+            | (cd dockwell && go run ./cmd/dockwell-catalog bump --seen-from-bodies) > seen.json
+      - name: Read each entry's images, and write a patch for each bump
+        working-directory: dockwell
+        env:
+          # Read-only, for GitHub's rate as the bump reads each app's releases.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/dockwell-catalog bump --catalog ../catalog --seen ../seen.json --out ../out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bumps
+          path: out/
+          retention-days: 3
+          if-no-files-found: error
+
+  write:
+    name: Write
+    needs: read
+    # Only the scheduled or dispatched run on main opens pull requests, and only it
+    # can read the App's key, which the environment keeps to main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: bump
+    permissions: {}
+    steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          client-id: ${{ vars.BUMP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BUMP_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app.outputs.token }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bumps
+          path: ${{ runner.temp }}/bumps
+      - name: Open or update each bump's pull request
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+          BUMPS: ${{ runner.temp }}/bumps
+        run: |
+          set -euo pipefail
+          if [[ "$SLUG" != "$BUMP_APP" ]]; then
+            echo "::error::The App's token is $SLUG's, not $BUMP_APP's, which .github/bump-app.md names"
+            exit 1
+          fi
+          id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
+          as=(-c "user.name=${SLUG}[bot]" -c "user.email=${id}+${SLUG}[bot]@users.noreply.github.com")
+          # Each reason a bump waits for a person, as a label: one that no longer
+          # holds comes off as its pull request is updated.
+          reasons=("major" "past its level" "within its wait" "tag pushed again" "not corroborated" "drops a platform" "signature unchecked" "majors in order" "unread")
+          # A bump's own labels alone: bump and those reasons.
+          while IFS= read -r label; do
+            if ! printf '%s\n' bump "${reasons[@]}" | grep -qxF -- "$label"; then
+              echo "::error::bumps.json names the label $label, which isn't a bump's"
+              exit 1
+            fi
+          done < <(jq -r '[.bumps[].labels[]] | unique | .[]' "$BUMPS/bumps.json")
+          # Every one is made before the loop where it's missing, one there already
+          # keeping its colour: gh pr edit can't take off a label the repository
+          # hasn't got, as it does each reason that no longer holds.
+          mapfile -t existing < <(gh label list --limit 500 --json name --jq '.[].name')
+          for label in bump "${reasons[@]}"; do
+            if ! printf '%s\n' "${existing[@]}" | grep -qxF -- "$label"; then
+              gh label create --color ededed -- "$label" > /dev/null
+            fi
+          done
+          count=$(jq '.bumps | length' "$BUMPS/bumps.json")
+          # Each bump on its own: one that fails is named, and the rest still go.
+          failed=()
+          for i in $(seq 0 $((count - 1))); do
+            b=$(jq -c ".bumps[$i]" "$BUMPS/bumps.json")
+            branch=$(jq -r .branch <<< "$b")
+            set +e
+            (
+              set -euo pipefail
+              entry=$(jq -r .entry <<< "$b")
+              title=$(jq -r .title <<< "$b")
+              patch=$(jq -r .patch <<< "$b")
+              # Only a bump's own branches, which the App alone writes.
+              if [[ ! "$entry" =~ ^[a-z0-9-]+$ || ( "$branch" != "bump/$entry" && "$branch" != "bump/$entry-major" ) || "$patch" == */* ]]; then
+                echo "::error::bumps.json names $branch and $patch, which aren't a bump's"
+                exit 1
+              fi
+              jq -r .body <<< "$b" > "$RUNNER_TEMP/body.md"
+              git reset -q --hard
+              # Onto main as it is now; where main has moved under the patch, onto
+              # the commit the read job made it from, which the pull request shows.
+              git checkout -q -B "$branch" origin/main
+              if ! git apply --index "$BUMPS/$patch" 2> /dev/null; then
+                # A bump that merged during the run is on main already: nothing to reopen.
+                if git apply --reverse --check "$BUMPS/$patch" 2> /dev/null; then
+                  echo "$branch: main has it already"
+                  exit 0
+                fi
+                git reset -q --hard
+                git checkout -q -B "$branch" "$GITHUB_SHA"
+                git apply --index "$BUMPS/$patch"
+              fi
+              # The patch moves its entry's file and nothing else: no other path, no new
+              # or deleted file, no mode or link, whatever the job that wrote it ran.
+              if [[ "$(git diff --cached --name-status HEAD)" != $'M\tentries/'"$entry"'.yaml' || -n "$(git diff --cached --summary HEAD)" ]]; then
+                echo "::error::$patch changes more than entries/$entry.yaml, so it isn't pushed"
+                exit 1
+              fi
+              git "${as[@]}" commit -q -m "$title"
+              if git rev-parse -q --verify "origin/$branch" > /dev/null && git diff --quiet "origin/$branch" HEAD; then
+                echo "$branch: no change"
+              else
+                git push -q --force origin "HEAD:refs/heads/$branch"
+              fi
+              labels=()
+              while IFS= read -r label; do
+                labels+=(--add-label "$label")
+              done < <(jq -r '.labels[]' <<< "$b")
+              # The App's own pull request of this branch exactly, never a fork's of the
+              # same name. --app would list through search, whose head: matches by
+              # prefix, so bump/redis would find bump/redis-major.
+              number=$(BRANCH="$branch" gh pr list --head "$branch" --state open --json number,author,isCrossRepository,headRefName \
+                --jq '[.[] | select((.isCrossRepository | not) and .author.login == ("app/" + env.SLUG) and .headRefName == env.BRANCH)][0].number // empty')
+              if [[ -n "$number" ]]; then
+                gone=()
+                for reason in "${reasons[@]}"; do
+                  if ! jq -e --arg r "$reason" '.labels | index($r)' <<< "$b" > /dev/null; then
+                    gone+=(--remove-label "$reason")
+                  fi
+                done
+                gh pr edit "$number" --title "$title" --body-file "$RUNNER_TEMP/body.md" "${labels[@]}" "${gone[@]}"
+              else
+                labels=("${labels[@]/--add-label/--label}")
+                gh pr create --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md" "${labels[@]}"
+              fi
+            )
+            done_ok=$?
+            set -e
+            if ((done_ok != 0)); then
+              echo "::error::$branch wasn't opened or updated; the others go on"
+              failed+=("$branch")
+            fi
+          done
+          if ((${#failed[@]} > 0)); then
+            echo "::error::Not opened or updated: ${failed[*]}"
+            exit 1
+          fi

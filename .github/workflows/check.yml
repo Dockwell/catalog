@@ -47,3 +47,18 @@ jobs:
       - name: Check every entry as a server reads it
         working-directory: dockwell
         run: go run ./cmd/dockwell-catalog check ../catalog/entries
+      # Each app's check, which Dockwell's proof sources (Dockwell's ADR 0100): it
+      # belongs to an entry, defines that entry's check, and passes shellcheck.
+      - name: Check every app's check
+        working-directory: catalog
+        run: |
+          shopt -s nullglob
+          failed=0
+          for f in checks/*.sh; do
+            id=$(basename "$f" .sh)
+            [[ -f "entries/$id.yaml" ]] || { echo "::error file=$f::No entry is $id, so nothing proves with this check."; failed=1; }
+            grep -q "^check_$id() {" "$f" || { echo "::error file=$f::It defines no check_$id, which the proof calls."; failed=1; }
+          done
+          checks=(checks/*.sh)
+          ((${#checks[@]} == 0)) || shellcheck "${checks[@]}" || failed=1
+          exit "$failed"

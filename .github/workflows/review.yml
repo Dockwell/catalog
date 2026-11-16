@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# A review, which runs bump scope again (scope.yml) from main's own definition: a
+# maintainer's approval of an App bump that's out of scope, at its head, then
+# passes it, so a person can merge a major or a held step (Dockwell's ADR 0100).
+# This run reads and writes nothing; a review's own run would take its workflow
+# from the pull request, so scope.yml waits for this one to complete instead.
+name: Review
+
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}
+
+jobs:
+  review:
+    name: Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: A review
+        run: echo "A review of this pull request, which bump scope reads again."

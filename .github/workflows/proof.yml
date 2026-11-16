@@ -1,0 +1,106 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Proves the entries a change moves on real Docker (Dockwell's ADR 0100): each
+# installs from its earlier releases, upgrades to the change in one plan keeping its
+# data and its secrets, and passes its check in checks/, through Dockwell's own
+# reusable workflow at the commit .github/dockwell-commit names. Its runs read
+# alone, and hold no secret. "Proof, every entry" is the check a ruleset requires.
+name: Proof
+
+on:
+  # Pull requests into main alone, as for bump scope (#726's slice 2 re-check, N1).
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pick:
+    name: Which entries
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      entries: ${{ steps.pick.outputs.entries }}
+      base: ${{ steps.pick.outputs.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The entries this change moves, or whose checks it changes
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # A pull request's merge commit's first parent is the base it was merged with,
+          # which base.sha can trail (#726's slice 2 review, L6); a push's is what it
+          # pushed over.
+          base=$(git rev-parse HEAD^1)
+          if [[ "$EVENT" == push && "$BEFORE" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then
+            base=$BEFORE
+          fi
+          mapfile -t ids < <(git diff --name-only "$base" HEAD -- entries checks |
+            sed -n 's#^entries/\([a-z0-9-]*\)\.yaml$#\1#p; s#^checks/\([a-z0-9-]*\)\.sh$#\1#p' | sort -u |
+            while read -r id; do [[ -f "entries/$id.yaml" ]] && echo "$id"; done)
+          if ((${#ids[@]} > 5)); then
+            echo "::error::This change moves ${#ids[@]} entries (${ids[*]}), and a run proves at most 5, as the organization's jobs are shared. Split it."
+            exit 1
+          fi
+          echo "entries=${ids[*]}" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+      - name: Which commit of Dockwell proves
+        run: |
+          commit=$(tr -d '[:space:]' < .github/dockwell-commit)
+          # Every call of the proof and every Dockwell it builds, not only the first.
+          mapfile -t pins < <(grep -E '^ *(uses: .*catalog-proof\.yml@|dockwell-ref:)' .github/workflows/proof.yml | sed -E 's/ *#.*//; s/.*(@|: *)//')
+          ((${#pins[@]} >= 2)) || { echo "::error file=.github/workflows/proof.yml::It names no proof to call or Dockwell to build."; exit 1; }
+          for pin in "${pins[@]}"; do
+            if [[ "$pin" != "$commit" ]]; then
+              echo "::error file=.github/workflows/proof.yml::It names $pin, and .github/dockwell-commit names $commit. Move them together."
+              exit 1
+            fi
+          done
+
+  proof:
+    name: Proof
+    needs: pick
+    if: needs.pick.outputs.entries != ''
+    # The same commit as .github/dockwell-commit, which Which entries holds it to.
+    uses: Dockwell/dockwell/.github/workflows/catalog-proof.yml@fb20a365238c635b4c288697161349b77b0d63ed
+    with:
+      entries: ${{ needs.pick.outputs.entries }}
+      catalog-ref: ${{ github.sha }}
+      base-ref: ${{ needs.pick.outputs.base }}
+      dockwell-ref: fb20a365238c635b4c288697161349b77b0d63ed
+
+  # One check of a fixed name, which a ruleset can require: it passes where nothing
+  # needed proving, and says which entries have the floor alone.
+  every:
+    name: Proof, every entry
+    needs: [pick, proof]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every entry proven
+        env:
+          PICK: ${{ needs.pick.result }}
+          PROOF: ${{ needs.proof.result }}
+          FLOORED: ${{ needs.proof.outputs.floored }}
+          NOT_UPGRADED: ${{ needs.proof.outputs.not-upgraded }}
+        run: |
+          echo "Which entries: $PICK. Proof: $PROOF."
+          if [[ -n "$FLOORED" ]]; then
+            echo "::notice::Proven with the floor alone, as they have no checks/<id>.sh, so they don't merge by themselves: $FLOORED"
+          fi
+          if [[ -n "$NOT_UPGRADED" ]]; then
+            echo "::notice::No upgrade proven, as every earlier release is before the earliest their check runs, so they don't merge by themselves: $NOT_UPGRADED"
+          fi
+          [[ "$PICK" == success && ( "$PROOF" == success || "$PROOF" == skipped ) ]]
