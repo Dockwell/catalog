@@ -19,10 +19,10 @@ on:
     workflows: [Review]
     types: [completed]
 
-permissions:
-  contents: read
-  pull-requests: read
-  statuses: write
+# Each job has what it needs alone: the one that reads the head and the registries
+# can't post a status, and the ones that post read nothing but the run's own
+# outputs (#726's slice 2 review, L7).
+permissions: {}
 
 # Keyed by the pull request's number, from either trigger, never a branch a fork
 # names; and queued, not cancelled, so an approval's run and a push's both post, in
@@ -35,10 +35,33 @@ env:
   BUMP_APP: app/dockwell-catalog-bump
 
 jobs:
+  pending:
+    name: Pending
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      statuses: write
+    steps:
+      - name: Pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+        run: |
+          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]] || exit 0
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$HEAD" -f state=pending -f context="bump scope" \
+            -f description="Reading the diff" > /dev/null
+
   scope:
     name: Bump scope
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      head: ${{ steps.pr.outputs.head }}
+      state: ${{ steps.scope.outputs.state }}
+      description: ${{ steps.scope.outputs.description }}
     steps:
       - name: Which pull request
         id: pr
@@ -60,14 +83,6 @@ jobs:
           # bump branches: a commit status shows on each, so the commit is judged.
           gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$head/pulls" | jq -s 'add // []' > "$RUNNER_TEMP/open.json"
           git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 'refs/heads/bump/*' > "$RUNNER_TEMP/branches.txt"
-      - name: Pending
-        if: steps.pr.outputs.number != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD: ${{ steps.pr.outputs.head }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$HEAD" -f state=pending -f context="bump scope" \
-            -f description="Reading the diff" > /dev/null
       # main's own files: the head is never checked out.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.pr.outputs.number != ''
@@ -148,6 +163,7 @@ jobs:
           echo "approved=$approved" >> "$GITHUB_OUTPUT"
       - name: Bump scope
         if: steps.pr.outputs.number != ''
+        id: scope
         env:
           GH_TOKEN: ${{ github.token }}
           # Read-only, for GitHub's rate as it reads the app's releases again.
@@ -168,7 +184,33 @@ jobs:
           fi
           jq -r '.why[]? | "- " + .' "$RUNNER_TEMP/scope.json" >> "$GITHUB_STEP_SUMMARY"
           state=$(jq -r .state "$RUNNER_TEMP/scope.json")
-          description=$(jq -r .description "$RUNNER_TEMP/scope.json")
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$HEAD" -f state="$state" -f context="bump scope" \
-            -f description="$description" -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
+          # One line of at most 140 characters, which is what a status holds.
+          description=$(jq -r .description "$RUNNER_TEMP/scope.json" | tr -d '\r\n' | cut -c1-140)
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "description=$description" >> "$GITHUB_OUTPUT"
           echo "bump scope: $state, $description"
+
+  post:
+    name: Post
+    # After Pending, so the verdict is always the last status this run posts.
+    needs: [pending, scope]
+    if: always() && needs.scope.outputs.head != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      statuses: write
+    steps:
+      - name: The status on the head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.scope.outputs.head }}
+          STATE: ${{ needs.scope.outputs.state }}
+          DESCRIPTION: ${{ needs.scope.outputs.description }}
+        run: |
+          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::no head commit to post on"; exit 1; }
+          case "$STATE" in
+          success | failure | error) ;;
+          *) STATE=error DESCRIPTION="bump scope couldn't read it. Run it again" ;;
+          esac
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$HEAD" -f state="$STATE" -f context="bump scope" \
+            -f description="${DESCRIPTION:0:140}" -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
