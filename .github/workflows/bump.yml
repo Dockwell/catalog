@@ -19,6 +19,11 @@ on:
 
 permissions: {}
 
+env:
+  # The bump App's slug, which .github/bump-app.md fixes: only its own pull requests,
+  # from branches of this repository, are a bump's. A fork's of the same name aren't.
+  BUMP_APP: dockwell-catalog-bump
+
 concurrency:
   group: bump
   cancel-in-progress: false
@@ -60,8 +65,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json headRefName,body \
-            --jq '.[] | select(.headRefName | startswith("bump/")) | {body}' \
+          # The App's own pull requests alone: a fork's, of a branch named bump/
+          # too, could otherwise say when anything was first seen.
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json headRefName,body,author,isCrossRepository \
+            --jq '.[] | select((.isCrossRepository | not) and .author.login == ("app/" + env.BUMP_APP) and (.headRefName | startswith("bump/"))) | {body}' \
             | (cd dockwell && go run ./cmd/dockwell-catalog bump --seen-from-bodies) > seen.json
       - name: Read each entry's images, and write a patch for each bump
         working-directory: dockwell
@@ -109,6 +116,10 @@ jobs:
           BUMPS: ${{ runner.temp }}/bumps
         run: |
           set -euo pipefail
+          if [[ "$SLUG" != "$BUMP_APP" ]]; then
+            echo "::error::The App's token is $SLUG's, not $BUMP_APP's, which .github/bump-app.md names"
+            exit 1
+          fi
           id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
           as=(-c "user.name=${SLUG}[bot]" -c "user.email=${id}+${SLUG}[bot]@users.noreply.github.com")
           # Each reason a bump waits for a person, as a label: one that no longer
@@ -139,7 +150,9 @@ jobs:
               gh label create "$label" --force --color ededed > /dev/null
               labels+=(--add-label "$label")
             done < <(jq -r '.labels[]' <<< "$b")
-            number=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')
+            # The App's own pull request of this branch, never a fork's of the same name.
+            number=$(gh pr list --head "$branch" --app "$SLUG" --state open --json number,isCrossRepository \
+              --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
             if [[ -n "$number" ]]; then
               gone=()
               for reason in "${reasons[@]}"; do
