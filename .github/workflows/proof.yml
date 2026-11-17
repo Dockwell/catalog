@@ -73,12 +73,12 @@ jobs:
     needs: pick
     if: needs.pick.outputs.entries != ''
     # The same commit as .github/dockwell-commit, which Which entries holds it to.
-    uses: Dockwell/dockwell/.github/workflows/catalog-proof.yml@49980e61ed8b6bf67e5f33a20ed9514bf2a3966f
+    uses: Dockwell/dockwell/.github/workflows/catalog-proof.yml@f8551b0950aee5b8208daad7df10c8a22d4bcc0b
     with:
       entries: ${{ needs.pick.outputs.entries }}
       catalog-ref: ${{ github.sha }}
       base-ref: ${{ needs.pick.outputs.base }}
-      dockwell-ref: 49980e61ed8b6bf67e5f33a20ed9514bf2a3966f
+      dockwell-ref: f8551b0950aee5b8208daad7df10c8a22d4bcc0b
 
   # One check of a fixed name, which a ruleset can require: it passes where nothing
   # needed proving, and says which entries have the floor alone.
