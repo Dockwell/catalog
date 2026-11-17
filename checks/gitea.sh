@@ -23,11 +23,11 @@ given_env[gitea]="OWNER_PASSWORD=Ow9Kx7Vq2mRt9Lw4zBpN8cT3"
 # ADR 0105), giving it an email where an install by a token waits for one, and says
 # no where the install has none, as one from before upgraded keeps.
 gitea_owner_made() {
-  local said state planned
+  local said owner_state planned
   for _ in $(seq 100); do
     said=$(dw catalog installs --json) || fail "catalog installs failed"
-    state=$(jq -r --arg p "$installed" '.installs[] | select(.project == $p) | .owner.state // empty' <<<"$said")
-    case "$state" in
+    owner_state=$(jq -r --arg p "$installed" '.installs[] | select(.project == $p) | .owner.state // empty' <<<"$said")
+    case "$owner_state" in
     "") return 1 ;;
     CATALOG_OWNER_STATE_MADE) return 0 ;;
     CATALOG_OWNER_STATE_FAILED) fail "Dockwell couldn't make Gitea's owner: $(jq -c --arg p "$installed" '.installs[] | select(.project == $p) | .owner' <<<"$said")" ;;
@@ -39,7 +39,7 @@ gitea_owner_made() {
     esac
     sleep 3
   done
-  fail "Dockwell didn't make Gitea's owner within 5 minutes: it reads $state"
+  fail "Dockwell didn't make Gitea's owner within 5 minutes: it reads $owner_state"
 }
 
 check_gitea() {
