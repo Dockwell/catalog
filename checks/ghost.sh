@@ -6,6 +6,8 @@
 # and an upgrade of it (Dockwell's ADR 0100): check_ghost first, once it's installed,
 # and check_ghost upgraded, once it's upgraded from an earlier release. It answers,
 # signs in with what Dockwell generated, and after an upgrade finds what it wrote.
+# Where Dockwell makes its owner, it proves the owner is there and no one else can
+# take Ghost; where it doesn't, as an install from before keeps, it makes one.
 
 # The release before, by its version and each image by digest, which an upgrade
 # is proven from where the catalog's history holds none of another version.
@@ -19,8 +21,31 @@ ghost_get() {
   curl -fsS --max-time 15 -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$1$2"
 }
 
+# ghost_owner_made waits for the owner Dockwell makes as the entry says (Dockwell's
+# ADR 0105), giving it an email where an install by a token waits for one, and says
+# no where the install has none, as one from before upgraded keeps.
+ghost_owner_made() {
+  local said state planned
+  for _ in $(seq 100); do
+    said=$(dw catalog installs --json) || fail "catalog installs failed"
+    state=$(jq -r --arg p "$installed" '.installs[] | select(.project == $p) | .owner.state // empty' <<<"$said")
+    case "$state" in
+    "") return 1 ;;
+    CATALOG_OWNER_STATE_MADE) return 0 ;;
+    CATALOG_OWNER_STATE_FAILED) fail "Dockwell couldn't make Ghost's owner: $(jq -c --arg p "$installed" '.installs[] | select(.project == $p) | .owner' <<<"$said")" ;;
+    CATALOG_OWNER_STATE_WAITING_EMAIL)
+      planned=$(dw catalog set-owner-email "$installed" --email owner@example.com --plan-only --json) || fail "planning Ghost's owner's email failed: $planned"
+      plans+=("$(jq -r .change.id <<<"$planned")")
+      apply "${plans[-1]}"
+      ;;
+    esac
+    sleep 3
+  done
+  fail "Dockwell didn't make Ghost's owner within 5 minutes: it reads $state"
+}
+
 check_ghost() {
-  local ghost port said reported
+  local ghost port said reported title="E2E kept"
   ghost=$(container ghost)
   port=$(value PORT)
   # It's given an https address, as behind a domain, so it answers what the proxy in front
@@ -33,7 +58,17 @@ check_ghost() {
   [[ -n "$reported" && "$reported" == "${version%.*}" && "$(env_of "$ghost" GHOST_VERSION)" == "$version" ]] ||
     fail "Ghost says it's '$reported' and its image '$(env_of "$ghost" GHOST_VERSION)', want $version"
   [[ "$(env_of "$ghost" url)" == https://blog.example.com ]] || fail "Ghost's url is '$(env_of "$ghost" url)', want the address it was given"
-  if [[ "$1" == first ]]; then
+  if ghost_owner_made; then
+    # Made from inside its container at its https address, as its steps ask, so its
+    # setup is done, and a first visitor's is refused.
+    said=$(ghost_get "$port" /ghost/api/admin/authentication/setup/) || fail "Ghost's setup doesn't answer"
+    [[ "$(jq -r '.setup[0].status' <<<"$said")" == true ]] || fail "Ghost still offers its setup: $said"
+    said=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H 'X-Forwarded-Proto: https' -H 'Content-Type: application/json' -H 'Origin: https://blog.example.com' \
+      -d '{"setup":[{"name":"Visitor","email":"visitor@example.com","password":"Kx7-Vq2!mRt9-Lw4zB","blogTitle":"Taken"}]}' \
+      "http://127.0.0.1:$port/ghost/api/admin/authentication/setup/") || fail "Ghost's setup got no answer"
+    [[ "$said" == 4?? ]] || fail "Ghost let a first visitor set it up: it answered $said"
+    title=Ghost
+  elif [[ "$1" == first ]]; then
     # Ghost refuses a password with a common word in it, such as passw0rd, so this has none.
     said=$(curl -sS --max-time 30 -w '\n%{http_code}' -H 'X-Forwarded-Proto: https' -H 'Content-Type: application/json' -H 'Origin: https://blog.example.com' \
       -d '{"setup":[{"name":"Owner","email":"owner@example.com","password":"Kx7-Vq2!mRt9-Lw4zB","blogTitle":"E2E kept"}]}' \
@@ -42,5 +77,5 @@ check_ghost() {
   fi
   # What it keeps is in MySQL, so the site keeps its title through an upgrade.
   said=$(ghost_get "$port" /ghost/api/admin/site/) || fail "Ghost doesn't answer on port $port behind an https proxy"
-  [[ "$(jq -r .site.title <<<"$said")" == "E2E kept" ]] || fail "Ghost's site reads $said"
+  [[ "$(jq -r .site.title <<<"$said")" == "$title" ]] || fail "Ghost's site reads $said, want the title $title"
 }
