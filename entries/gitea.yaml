@@ -23,7 +23,7 @@ screenshots:
     source: https://about.gitea.com/img/home-screenshot-2.png
 category: developer tools
 version: "28.3.0"
-release: 5
+release: 6
 homepage: https://about.gitea.com
 license: AGPL-3.0-only
 appLicense: MIT
