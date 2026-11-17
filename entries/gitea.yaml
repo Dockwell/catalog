@@ -5,7 +5,7 @@ summary: Git hosting with code review
 description: |-
   Gitea hosts Git repositories with the collaboration tools around them. Keep source code on your server, track issues, and review changes through pull requests in a browser.
 
-  This install gives you a Gitea server and persistent storage. Set up the first account after installation, then create or import your repositories.
+  This install gives you a Gitea server, persistent storage, and an owner account Dockwell makes as it installs. Sign in, then create or import your repositories.
 icon: media/gitea-icon.webp
 documentation: https://docs.gitea.com
 appSource: https://github.com/go-gitea/gitea
@@ -23,7 +23,7 @@ screenshots:
     source: https://about.gitea.com/img/home-screenshot-2.png
 category: developer tools
 version: "28.3.0"
-release: 4
+release: 5
 homepage: https://about.gitea.com
 license: AGPL-3.0-only
 appLicense: MIT
@@ -32,7 +32,55 @@ source:
   path: entries/gitea.yaml
 web:
   service: gitea
-firstVisitorOwns: true
+owner:
+  service: gitea
+  emailInput: OWNER_EMAIL
+  userInput: OWNER_USER
+  passwordInput: OWNER_PASSWORD
+  userPattern: "^[a-zA-Z0-9_.-]+$"
+  # Gitea makes up a password no one keeps, and a token the next step captures sets
+  # the owner's own over its API, so no process's arguments hold it. A second try
+  # after one that stopped part-way skips a user Gitea already has.
+  steps:
+    - command:
+        user: git
+        words:
+          - sh
+          - -c
+          - gitea admin user create --admin --username "$OWNER_USER" --email "$OWNER_EMAIL" --random-password --must-change-password=false
+      unless:
+        request:
+          path: /api/v1/users/${OWNER_USER}
+          port: 3000
+    - command:
+        user: git
+        words:
+          - sh
+          - -c
+          - n="dockwell-$(date +%s%N)"; echo "name=$n"; gitea admin user generate-access-token --username "$OWNER_USER" --token-name "$n" --scopes write:admin --raw
+        capture:
+          TOKEN: '(?m)^([0-9a-f]{40})\s*$'
+          TOKEN_NAME: 'name=(\S+)'
+    - request:
+        method: PATCH
+        path: /api/v1/admin/users/${OWNER_USER}
+        contentType: application/json
+        body: '{"password":"${OWNER_PASSWORD}","login_name":"${OWNER_USER}","source_id":0,"must_change_password":false}'
+        headers:
+          Authorization: token ${TOKEN}
+        port: 3000
+    - request:
+        method: DELETE
+        path: /api/v1/users/${OWNER_USER}/tokens/${TOKEN_NAME}
+        headers:
+          Authorization: Basic ${DOCKWELL_OWNER_BASIC}
+        port: 3000
+  done:
+    request:
+      path: /api/v1/user
+      headers:
+        Authorization: Basic ${DOCKWELL_OWNER_BASIC}
+      port: 3000
 signups:
   service: gitea
   variable: GITEA__service__DISABLE_REGISTRATION
@@ -58,6 +106,17 @@ inputs:
     label: Secret key
     type: INPUT_TYPE_SECRET
     generate: 64
+  - name: OWNER_EMAIL
+    label: Owner's email
+    type: INPUT_TYPE_EMAIL
+  - name: OWNER_USER
+    label: Owner's user name
+    type: INPUT_TYPE_TEXT
+  - name: OWNER_PASSWORD
+    label: Owner's password
+    type: INPUT_TYPE_SECRET
+    generate: 24
+    generateAs: GENERATE_AS_PASSWORD
 compose: |
   services:
     gitea:

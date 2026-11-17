@@ -20,7 +20,7 @@ screenshots:
     source: https://user-images.githubusercontent.com/353959/169805900-66be5b89-0859-4816-8da9-528ed7534704.png
 category: cms
 version: "6.72.0"
-release: 5
+release: 6
 homepage: https://ghost.org
 license: AGPL-3.0-only
 appLicense: MIT
@@ -29,13 +29,48 @@ source:
   path: entries/ghost.yaml
 web:
   service: ghost
-firstVisitorOwns: true
+owner:
+  service: ghost
+  emailInput: OWNER_EMAIL
+  passwordInput: OWNER_PASSWORD
+  # Asked from inside its container, on its own loopback, the only address whose
+  # X-Forwarded-Proto Ghost believes, as the address its url says, so a Ghost behind
+  # https answers rather than redirects. The script reads every value from its
+  # environment: the body names them as {{NAME}}.
+  steps:
+    - command:
+        words:
+          - node
+          - -e
+          # The script, which done asks with too.
+          - &ask |-
+              const [m, p, b] = process.argv.slice(1);
+              const body = b ? b.replace(/\{\{(\w+)\}\}/g, (_, k) => JSON.stringify(process.env[k] || "").slice(1, -1)) : "";
+              const u = new URL(process.env.url);
+              const r = require("http").request({host: "127.0.0.1", port: 2368, path: p, method: m, headers: {
+                "Host": u.host, "X-Forwarded-Proto": u.protocol.slice(0, -1), "Origin": u.origin, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body)}},
+                res => { let out = ""; res.on("data", d => out += d); res.on("end", () => { console.log(res.statusCode + " " + out); process.exit(res.statusCode < 300 ? 0 : 1); }); });
+              r.on("error", e => { console.error(e.message); process.exit(1); });
+              r.end(body);
+          - POST
+          - /ghost/api/admin/authentication/setup/
+          - '{"setup":[{"name":"Owner","email":"{{OWNER_EMAIL}}","password":"{{OWNER_PASSWORD}}","blogTitle":"Ghost"}]}'
+  done:
+    command:
+      words:
+        - node
+        - -e
+        - *ask
+        - GET
+        - /ghost/api/admin/authentication/setup/
+        - ""
+    contains: '"status":true'
 addressVariables:
   - service: ghost
     variable: url
     value: "https://{domain}"
 notes:
-  - "Emails a sign-in code on each new device, so it needs its mail__ settings."
+  - "Signs in on a new device with no emailed code, as it has no mail to send one."
 inputs:
   - name: PORT
     label: Port on this server
@@ -50,6 +85,14 @@ inputs:
     label: Database root password
     type: INPUT_TYPE_SECRET
     generate: 32
+  - name: OWNER_EMAIL
+    label: Owner's email
+    type: INPUT_TYPE_EMAIL
+  - name: OWNER_PASSWORD
+    label: Owner's password
+    type: INPUT_TYPE_SECRET
+    generate: 24
+    generateAs: GENERATE_AS_PASSWORD
 databases: [db]
 needs:
   - name: db
@@ -79,6 +122,9 @@ compose: |
           condition: service_healthy
       environment:
         url: ${URL:-http://localhost:${PORT}}
+        # With no mail to send a new device its code, the owner would be locked out
+        # of every device but none (Dockwell's ADR 0105, "Ghost and mail").
+        security__staffDeviceVerification: "false"
         database__client: mysql
         database__connection__host: ${DB_HOST}
         database__connection__user: ${DB_USER}

@@ -25,7 +25,7 @@ screenshots:
     source: https://raw.githubusercontent.com/n8n-io/n8n/93243edc00b288a840fbb562a5e9f64177f2337f/assets/n8n-screenshot.png
 category: automation
 version: "2.45.5"
-release: 3
+release: 4
 homepage: https://n8n.io
 license: AGPL-3.0-only
 appLicense: Sustainable Use, with Enterprise code under n8n's own
@@ -34,7 +34,22 @@ source:
   path: entries/n8n.yaml
 web:
   service: n8n
-firstVisitorOwns: true
+owner:
+  service: n8n
+  emailInput: OWNER_EMAIL
+  passwordInput: OWNER_PASSWORD
+  steps:
+    - request:
+        method: POST
+        path: /rest/owner/setup
+        contentType: application/json
+        body: '{"email":"${OWNER_EMAIL}","firstName":"Owner","lastName":"Owner","password":"${OWNER_PASSWORD}"}'
+        port: 5678
+  done:
+    request:
+      path: /rest/settings
+      port: 5678
+    contains: '"showSetupOnFirstLoad":false'
 addressVariables:
   - service: n8n
     variable: WEBHOOK_URL
@@ -50,6 +65,14 @@ inputs:
     label: Port on this server
     type: INPUT_TYPE_PORT
     defaultValue: "5678"
+  - name: OWNER_EMAIL
+    label: Owner's email
+    type: INPUT_TYPE_EMAIL
+  - name: OWNER_PASSWORD
+    label: Owner's password
+    type: INPUT_TYPE_SECRET
+    generate: 24
+    generateAs: GENERATE_AS_PASSWORD
 compose: |
   services:
     n8n:
