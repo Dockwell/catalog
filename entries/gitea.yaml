@@ -75,6 +75,32 @@ owner:
         headers:
           Authorization: Basic ${DOCKWELL_OWNER_BASIC}
         port: 3000
+  # A new password, as the steps after the user set it: a token Gitea makes sets
+  # it over the API, then goes, deleted signing in with the new one.
+  resetSteps:
+    - command:
+        user: git
+        words:
+          - sh
+          - -c
+          - n="dockwell-$(date +%s%N)"; echo "name=$n"; gitea admin user generate-access-token --username "$OWNER_USER" --token-name "$n" --scopes write:admin --raw
+        capture:
+          TOKEN: '(?m)^([0-9a-f]{40})\s*$'
+          TOKEN_NAME: 'name=(\S+)'
+    - request:
+        method: PATCH
+        path: /api/v1/admin/users/${OWNER_USER}
+        contentType: application/json
+        body: '{"password":"${OWNER_PASSWORD}","login_name":"${OWNER_USER}","source_id":0,"must_change_password":false}'
+        headers:
+          Authorization: token ${TOKEN}
+        port: 3000
+    - request:
+        method: DELETE
+        path: /api/v1/users/${OWNER_USER}/tokens/${TOKEN_NAME}
+        headers:
+          Authorization: Basic ${DOCKWELL_OWNER_BASIC}
+        port: 3000
   done:
     request:
       path: /api/v1/user
