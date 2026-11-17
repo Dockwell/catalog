@@ -13,6 +13,12 @@
 # is proven from where the catalog's history holds none of another version.
 before[n8n]="2.44.6 n8nio/n8n:2.44.6@sha256:d02752c6ab446ae9db8deec2f9cc887c378f77cdcad31650814df936b7386dfb"
 
+# What a person gives its install, as dockwell catalog install takes it: the owner's
+# email and password, which only this release takes, so the check signs in as the
+# owner Dockwell makes. A release before that takes neither gets neither.
+given[n8n]="OWNER_EMAIL=owner@example.com OWNER_PASSWORD"
+given_env[n8n]="OWNER_PASSWORD=Ow9Kx7Vq2mRt9Lw4zBpN8cT3"
+
 # n8n_owner_made waits for the owner Dockwell makes as the entry says (Dockwell's
 # ADR 0105), giving it an email where an install by a token waits for one, and says
 # no where the install has none, as one from before upgraded keeps.
@@ -53,13 +59,12 @@ check_n8n() {
     said=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
       -d '{"email":"visitor@example.com","firstName":"A","lastName":"Visitor","password":"Visitor7Passw0rdX"}' "http://127.0.0.1:$port/rest/owner/setup") || fail "n8n's owner setup got no answer"
     [[ "$said" == 4?? ]] || fail "n8n let a first visitor make its owner: it answered $said"
-  else
-    if [[ "$1" == first ]]; then
-      said=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
-        -d "$(jq -c '. + {firstName: "Owner", lastName: "Example"}' <<<"$owner")" "http://127.0.0.1:$port/rest/owner/setup") || fail "n8n's owner setup got no answer"
-      [[ "$said" == 200 ]] || fail "n8n didn't make its owner: it answered $said"
-    fi
-    [[ "$(n8n_sign_in "$(jq -r .password <<<"$owner")")" == 200 ]] || fail "n8n's owner can't sign in"
+    owner='{"email":"owner@example.com","password":"Ow9Kx7Vq2mRt9Lw4zBpN8cT3"}'
+  elif [[ "$1" == first ]]; then
+    said=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+      -d "$(jq -c '. + {firstName: "Owner", lastName: "Example"}' <<<"$owner")" "http://127.0.0.1:$port/rest/owner/setup") || fail "n8n's owner setup got no answer"
+    [[ "$said" == 200 ]] || fail "n8n didn't make its owner: it answered $said"
   fi
+  [[ "$(n8n_sign_in "$(jq -r .password <<<"$owner")")" == 200 ]] || fail "n8n's owner can't sign in"
   [[ "$(n8n_sign_in not-the-password)" == 401 ]] || fail "n8n didn't refuse a wrong password"
 }

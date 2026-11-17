@@ -70,7 +70,7 @@ addressVariables:
     variable: url
     value: "https://{domain}"
 notes:
-  - "Emails a sign-in code on each new device, so it needs its mail__ settings."
+  - "Signs in on a new device with no emailed code, as it has no mail to send one."
 inputs:
   - name: PORT
     label: Port on this server
@@ -122,6 +122,9 @@ compose: |
           condition: service_healthy
       environment:
         url: ${URL:-http://localhost:${PORT}}
+        # With no mail to send a new device its code, the owner would be locked out
+        # of every device but none (Dockwell's ADR 0105, "Ghost and mail").
+        security__staffDeviceVerification: "false"
         database__client: mysql
         database__connection__host: ${DB_HOST}
         database__connection__user: ${DB_USER}

@@ -13,8 +13,11 @@
 # is proven from where the catalog's history holds none of another version.
 before[ghost]="6.71.0 ghost:6.71.0@sha256:00032f15726204565bf799ac272ee6fef588547cce50bedd38de3db55272c053"
 
-# What a person gives its install, as dockwell catalog install takes it.
-given[ghost]="URL=https://blog.example.com"
+# What a person gives its install, as dockwell catalog install takes it: the owner's
+# email and password, which only this release takes, so the check signs in as the
+# owner Dockwell makes. A release before that takes neither gets neither.
+given[ghost]="URL=https://blog.example.com OWNER_EMAIL=owner@example.com OWNER_PASSWORD"
+given_env[ghost]="OWNER_PASSWORD=Ow9Kx7Vq2mRt9Lw4zBpN8cT3"
 
 # ghost_get asks Ghost as the https proxy in front of it does.
 ghost_get() {
@@ -44,8 +47,15 @@ ghost_owner_made() {
   fail "Dockwell didn't make Ghost's owner within 5 minutes: it reads $state"
 }
 
+# ghost_sign_in signs in as a fresh client, with no cookie of a device Ghost knows,
+# and says the status Ghost answered.
+ghost_sign_in() {
+  curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H 'X-Forwarded-Proto: https' -H 'Content-Type: application/json' -H 'Origin: https://blog.example.com' \
+    -d "$(jq -nc --arg u owner@example.com --arg p "$2" '{username: $u, password: $p}')" "http://127.0.0.1:$1/ghost/api/admin/session"
+}
+
 check_ghost() {
-  local ghost port said reported title="E2E kept"
+  local ghost port said reported title="E2E kept" password="Kx7-Vq2!mRt9-Lw4zB"
   ghost=$(container ghost)
   port=$(value PORT)
   # It's given an https address, as behind a domain, so it answers what the proxy in front
@@ -67,15 +77,23 @@ check_ghost() {
       -d '{"setup":[{"name":"Visitor","email":"visitor@example.com","password":"Kx7-Vq2!mRt9-Lw4zB","blogTitle":"Taken"}]}' \
       "http://127.0.0.1:$port/ghost/api/admin/authentication/setup/") || fail "Ghost's setup got no answer"
     [[ "$said" == 4?? ]] || fail "Ghost let a first visitor set it up: it answered $said"
-    title=Ghost
+    title=Ghost password=Ow9Kx7Vq2mRt9Lw4zBpN8cT3
   elif [[ "$1" == first ]]; then
     # Ghost refuses a password with a common word in it, such as passw0rd, so this has none.
     said=$(curl -sS --max-time 30 -w '\n%{http_code}' -H 'X-Forwarded-Proto: https' -H 'Content-Type: application/json' -H 'Origin: https://blog.example.com' \
-      -d '{"setup":[{"name":"Owner","email":"owner@example.com","password":"Kx7-Vq2!mRt9-Lw4zB","blogTitle":"E2E kept"}]}' \
+      -d "$(jq -nc --arg p "$password" '{setup: [{name: "Owner", email: "owner@example.com", password: $p, blogTitle: "E2E kept"}]}')" \
       "http://127.0.0.1:$port/ghost/api/admin/authentication/setup/") || fail "Ghost's setup got no answer"
     [[ "${said##*$'\n'}" == 201 ]] || fail "Ghost didn't make its owner: it answered ${said##*$'\n'}, saying ${said%$'\n'*}"
   fi
   # What it keeps is in MySQL, so the site keeps its title through an upgrade.
   said=$(ghost_get "$port" /ghost/api/admin/site/) || fail "Ghost doesn't answer on port $port behind an https proxy"
   [[ "$(jq -r .site.title <<<"$said")" == "$title" ]] || fail "Ghost's site reads $said, want the title $title"
+  # A release that turns staff device verification off lets its owner sign in from a
+  # fresh client, with no code it would email; an earlier one asks for the code.
+  if [[ "$(env_of "$ghost" security__staffDeviceVerification)" == false ]]; then
+    said=$(ghost_sign_in "$port" "$password") || fail "Ghost's sign-in got no answer"
+    [[ "$said" == 201 ]] || fail "Ghost's owner can't sign in from a fresh client: it answered $said"
+  fi
+  said=$(ghost_sign_in "$port" not-the-password) || fail "Ghost's sign-in got no answer"
+  [[ "$said" == 4?? ]] || fail "Ghost answered $said to a wrong password"
 }

@@ -13,6 +13,12 @@
 # is proven from where the catalog's history holds none of another version.
 before[gitea]="28.1.0 gitea/gitea:28.1.0@sha256:f505a0d3a41323b786e05942fc7a4075e07ae7c169fd9485649aa55ee543a21a"
 
+# What a person gives its install, as dockwell catalog install takes it: the owner's
+# email and password, which only this release takes, so the check signs in as the
+# owner Dockwell makes. A release before that takes neither gets neither.
+given[gitea]="OWNER_EMAIL=owner@example.com OWNER_PASSWORD"
+given_env[gitea]="OWNER_PASSWORD=Ow9Kx7Vq2mRt9Lw4zBpN8cT3"
+
 # gitea_owner_made waits for the owner Dockwell makes as the entry says (Dockwell's
 # ADR 0105), giving it an email where an install by a token waits for one, and says
 # no where the install has none, as one from before upgraded keeps.
@@ -37,7 +43,7 @@ gitea_owner_made() {
 }
 
 check_gitea() {
-  local gitea port said banner key admins
+  local gitea port said banner key admins password=E2e-owner-passw0rd
   gitea=$(container gitea)
   port=$(value PORT)
   said=$(curl -fsS --max-time 10 "http://127.0.0.1:$port/api/v1/version") || fail "Gitea doesn't answer on port $port"
@@ -50,15 +56,14 @@ check_gitea() {
     admins=$(docker exec -u git "$gitea" gitea admin user list --admin) || fail "Gitea can't list its admins"
     [[ "$(awk 'NR > 1 {print $2}' <<<"$admins")" == owner ]] || fail "Gitea's admins are $admins, want the owner Dockwell made alone"
     [[ "$(env_of "$gitea" GITEA__service__DISABLE_REGISTRATION)" == true ]] || fail "Gitea's sign-ups are open"
-  else
-    if [[ "$1" == first ]]; then
-      docker exec -u git "$gitea" gitea admin user create --username owner --password E2e-owner-passw0rd --email owner@example.com --admin --must-change-password=false >/dev/null ||
-        fail "Gitea can't make a user"
-    fi
-    # What it keeps is on its volume, so the user signs in after an upgrade too.
-    said=$(curl -fsS --max-time 10 -u owner:E2e-owner-passw0rd "http://127.0.0.1:$port/api/v1/user") || fail "Gitea's user can't sign in"
-    [[ "$(jq -r .login <<<"$said")" == owner ]] || fail "Gitea signed in as $said"
+    password=Ow9Kx7Vq2mRt9Lw4zBpN8cT3
+  elif [[ "$1" == first ]]; then
+    docker exec -u git "$gitea" gitea admin user create --username owner --password "$password" --email owner@example.com --admin --must-change-password=false >/dev/null ||
+      fail "Gitea can't make a user"
   fi
+  # What it keeps is on its volume, so the user signs in after an upgrade too.
+  said=$(curl -fsS --max-time 10 -u "owner:$password" "http://127.0.0.1:$port/api/v1/user") || fail "Gitea's owner can't sign in"
+  [[ "$(jq -r .login <<<"$said")" == owner ]] || fail "Gitea signed in as $said"
   said=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -u owner:not-the-password "http://127.0.0.1:$port/api/v1/user") || fail "Gitea's sign-in got no answer"
   [[ "$said" == 401 ]] || fail "Gitea answered $said to a wrong password"
   banner=$(exec 3<>"/dev/tcp/127.0.0.1/$(value SSH_PORT)" && timeout 5 head -c 7 <&3) || fail "Gitea's SSH doesn't answer"
