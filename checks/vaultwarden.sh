@@ -81,6 +81,15 @@ check_vaultwarden() {
       sleep 3
     done
     [[ -z "$(env_of "$(container vaultwarden)" ADMIN_TOKEN)" ]] || fail "Vaultwarden still takes ADMIN_TOKEN once its owner registered"
+    # Taking it out starts the container again, which answers before its health
+    # check has passed: this waits for that, for 2 minutes at most, as the harness
+    # reads its health once this returns.
+    for _ in $(seq 40); do
+      [[ "$(docker inspect --format '{{.State.Health.Status}}' "$(container vaultwarden)")" == healthy ]] && break
+      sleep 3
+    done
+    [[ "$(docker inspect --format '{{.State.Health.Status}}' "$(container vaultwarden)")" == healthy ]] ||
+      fail "Vaultwarden isn't healthy within 2 minutes of starting again without ADMIN_TOKEN"
   fi
   # The account is in its database, so it signs in after an upgrade too.
   said=$(vaultwarden_sign_in "$port" "$hash") || fail "Vaultwarden's sign-in got no answer"
