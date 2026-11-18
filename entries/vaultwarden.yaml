@@ -69,7 +69,7 @@ owner:
           headers:
             Cookie: VW_ADMIN=${VW_SESSION}
           port: 80
-        where: "[email=${OWNER_EMAIL}].object=user"
+        where: "[email=${OWNER_EMAIL}].object=profile"
   # Made once the invited user has registered: _status 0, where 1 is invited.
   done:
     before:
