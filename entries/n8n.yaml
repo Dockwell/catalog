@@ -24,8 +24,8 @@ screenshots:
     caption: "Build an automation on the n8n workflow canvas"
     source: https://raw.githubusercontent.com/n8n-io/n8n/93243edc00b288a840fbb562a5e9f64177f2337f/assets/n8n-screenshot.png
 category: automation
-version: "2.45.5"
-release: 4
+version: "3.3.0"
+release: 5
 homepage: https://n8n.io
 license: AGPL-3.0-only
 appLicense: Sustainable Use, with Enterprise code under n8n's own
@@ -76,7 +76,7 @@ inputs:
 compose: |
   services:
     n8n:
-      image: n8nio/n8n:2.45.5@sha256:9f6d0a5987ab5a297c4b0b38fbf1a22285dd1364551478e93f03d506908fa74c
+      image: n8nio/n8n:3.3.0@sha256:e06707c78ef5adb302b47909f8fee5caf8d389a7e5f3f0e03165214f6178565e
       restart: unless-stopped
       environment:
         N8N_LISTEN_ADDRESS: 0.0.0.0
