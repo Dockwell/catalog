@@ -48,10 +48,18 @@ check_vaultwarden() {
     [[ "$said" == 400 ]] || fail "Vaultwarden takes an address it didn't invite: $said"
   fi
   if [[ "$1" == first ]]; then
-    # With no mail server, it gives the token a verification email would carry.
-    token=$(curl -fsS --max-time 15 -H 'Content-Type: application/json' -H 'Accept: application/json' \
-      -d '{"email":"owner@example.com","name":"Owner"}' "http://127.0.0.1:$port/identity/accounts/register/send-verification-email") ||
-      fail "Vaultwarden doesn't take a new account"
+    # With no mail server, it gives the token a verification email would carry. Where
+    # Dockwell makes the owner, sign-ups are closed, and only the address it invites
+    # may register: it invites once the app runs, which may be after the install
+    # applies, so this asks again until the invite is there, for 3 minutes at most.
+    token=""
+    for _ in $(seq "$([[ -n "$owner_state" ]] && echo 60 || echo 1)"); do
+      token=$(curl -fsS --max-time 15 -H 'Content-Type: application/json' -H 'Accept: application/json' \
+        -d '{"email":"owner@example.com","name":"Owner"}' "http://127.0.0.1:$port/identity/accounts/register/send-verification-email" 2>/dev/null) && break
+      token=""
+      sleep 3
+    done
+    [[ -n "$token" ]] || fail "Vaultwarden doesn't take a new account$([[ -n "$owner_state" ]] && echo ", the invited owner's, within 3 minutes")"
     token=$(jq -r . <<<"$token")
     said=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
       -d "$(jq -nc --arg t "$token" --arg h "$hash" '{email: "owner@example.com", masterPasswordHash: $h, emailVerificationToken: $t, kdf: 0, kdfIterations: 600000,
