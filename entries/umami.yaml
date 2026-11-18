@@ -20,7 +20,7 @@ screenshots:
     source: https://umami.is/_next/static/immutable/media/screenshot-dashboard.3vmc7t3hapnqk.jpg
 category: analytics
 version: "3.4.1"
-release: 5
+release: 6
 homepage: https://umami.is
 license: AGPL-3.0-only
 appLicense: MIT
@@ -29,7 +29,53 @@ source:
   path: entries/umami.yaml
 web:
   service: umami
-firstSteps: "It starts with the account admin and the password umami: change it under Settings, Profile, before it has a domain."
+owner:
+  service: umami
+  userInput: OWNER_USER
+  passwordInput: OWNER_PASSWORD
+  # Umami keeps user names in lower case.
+  userPattern: "^[a-z0-9._-]+$"
+  # Umami starts with admin and the password umami. The steps sign in with them, and
+  # change the user name and the password to the owner's in one request, so a try
+  # that stops part-way never leaves the known password under the owner's name.
+  knownUser: admin
+  knownPassword: umami
+  steps:
+    - request:
+        method: POST
+        path: /api/auth/login
+        contentType: application/json
+        body: '{"username":"${KNOWN_USER}","password":"${KNOWN_PASSWORD}"}'
+        capture:
+          TOKEN: token
+          ADMIN_ID: user.id
+        port: 3000
+    - request:
+        method: POST
+        path: /api/users/${ADMIN_ID}
+        contentType: application/json
+        body: '{"username":"${OWNER_USER}","password":"${OWNER_PASSWORD}"}'
+        headers:
+          Authorization: Bearer ${TOKEN}
+        port: 3000
+  # The owner signs in, and the known password is refused for admin and for the
+  # owner's name, each from inside its container, with every value read from there.
+  done:
+    command:
+      words:
+        - node
+        - -e
+        - |-
+          const fill = (s) => s.replace(/\{\{(\w+)\}\}/g, (_, k) => JSON.stringify(process.env[k] || "").slice(1, -1));
+          const login = (b) => fetch("http://127.0.0.1:3000/api/auth/login", {method: "POST", headers: {"content-type": "application/json"}, body: fill(b)}).then((r) => r.status);
+          const [own, ...known] = process.argv.slice(1);
+          Promise.all([login(own), ...known.map(login)]).then(([o, ...k]) => {
+            console.log(o + " " + k.join(" "));
+            process.exit(o === 200 && k.every((s) => s === 401) ? 0 : 1);
+          }, (e) => { console.error(e.message); process.exit(1); });
+        - '{"username":"{{OWNER_USER}}","password":"{{OWNER_PASSWORD}}"}'
+        - '{"username":"{{KNOWN_USER}}","password":"{{KNOWN_PASSWORD}}"}'
+        - '{"username":"{{OWNER_USER}}","password":"{{KNOWN_PASSWORD}}"}'
 inputs:
   - name: PORT
     label: Port on this server
@@ -44,6 +90,14 @@ inputs:
     type: INPUT_TYPE_SECRET
     generate: 32
     characters: CHARACTERS_URL_SAFE
+  - name: OWNER_USER
+    label: Owner's user name
+    type: INPUT_TYPE_TEXT
+  - name: OWNER_PASSWORD
+    label: Owner's password
+    type: INPUT_TYPE_SECRET
+    generate: 24
+    generateAs: GENERATE_AS_PASSWORD
 databases: [db]
 compose: |
   services:

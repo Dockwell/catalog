@@ -20,7 +20,7 @@ screenshots:
     source: https://raw.githubusercontent.com/bitwarden/clients/103de051270fb7156dbfdbb95ac2ab66722db267/apps/browser/store/locales/en/screenshots/Chrome/Chrome01.png
 category: security
 version: "1.37.5"
-release: 4
+release: 5
 homepage: https://github.com/dani-garcia/vaultwarden
 license: AGPL-3.0-only
 appLicense: AGPL-3.0-only
@@ -29,7 +29,63 @@ source:
   path: entries/vaultwarden.yaml
 web:
   service: vaultwarden
-firstVisitorOwns: true
+# Its owner's account comes from their master password, in their browser, so
+# Dockwell invites their email through the admin API, with a token it generates and
+# keeps sealed, and the install is held until they've registered through its setup
+# link. Then ADMIN_TOKEN goes, which turns the admin page off.
+owner:
+  service: vaultwarden
+  emailInput: OWNER_EMAIL
+  madeWhenDone: true
+  unsetWhenMade: [ADMIN_TOKEN]
+  steps:
+    - request:
+        method: POST
+        path: /admin
+        contentType: application/x-www-form-urlencoded
+        body: token=${ADMIN_TOKEN_PLAIN}
+        capture:
+          VW_SESSION: cookie:VW_ADMIN
+        port: 80
+    - request:
+        method: POST
+        path: /admin/invite
+        contentType: application/json
+        body: '{"email":"${OWNER_EMAIL}"}'
+        headers:
+          Cookie: VW_ADMIN=${VW_SESSION}
+        port: 80
+      unless:
+        before:
+          method: POST
+          path: /admin
+          contentType: application/x-www-form-urlencoded
+          body: token=${ADMIN_TOKEN_PLAIN}
+          capture:
+            VW_SESSION: cookie:VW_ADMIN
+          port: 80
+        request:
+          path: /admin/users
+          headers:
+            Cookie: VW_ADMIN=${VW_SESSION}
+          port: 80
+        where: "[email=${OWNER_EMAIL}].object=profile"
+  # Made once the invited user has registered: _status 0, where 1 is invited.
+  done:
+    before:
+      method: POST
+      path: /admin
+      contentType: application/x-www-form-urlencoded
+      body: token=${ADMIN_TOKEN_PLAIN}
+      capture:
+        VW_SESSION: cookie:VW_ADMIN
+      port: 80
+    request:
+      path: /admin/users
+      headers:
+        Cookie: VW_ADMIN=${VW_SESSION}
+      port: 80
+    where: "[email=${OWNER_EMAIL}]._status=0"
 signups:
   service: vaultwarden
   variable: SIGNUPS_ALLOWED
@@ -46,11 +102,28 @@ inputs:
     label: Port on this server
     type: INPUT_TYPE_PORT
     defaultValue: "8222"
+  - name: OWNER_EMAIL
+    label: Owner's email
+    type: INPUT_TYPE_EMAIL
+  - name: ADMIN_TOKEN_PLAIN
+    label: Admin token
+    type: INPUT_TYPE_SECRET
+    generate: 48
+  - name: ADMIN_TOKEN
+    label: Admin token's hash
+    type: INPUT_TYPE_SECRET
+    hashOf: ADMIN_TOKEN_PLAIN
 compose: |
   services:
     vaultwarden:
       image: vaultwarden/server:1.37.5@sha256:4fe17f415f90087377d37c755e0ea3cf189dcc6794e49cdd2a9adbb4937d9e1f
       restart: unless-stopped
+      environment:
+        ADMIN_TOKEN: ${ADMIN_TOKEN}
+        # Dockwell signs in to the admin page to invite the owner and to read
+        # they've registered, more often than its default allows.
+        ADMIN_RATELIMIT_SECONDS: "60"
+        ADMIN_RATELIMIT_MAX_BURST: "30"
       ports:
         - "127.0.0.1:${PORT}:80"
       volumes:
