@@ -90,6 +90,9 @@ check_vaultwarden() {
     done
     [[ "$(docker inspect --format '{{.State.Health.Status}}' "$(container vaultwarden)")" == healthy ]] ||
       fail "Vaultwarden isn't healthy within 2 minutes of starting again without ADMIN_TOKEN"
+    # The change that took it out may still be applying, and refuses another on the
+    # app, its removal included, until it ends.
+    quiet
   fi
   # The account is in its database, so it signs in after an upgrade too.
   said=$(vaultwarden_sign_in "$port" "$hash") || fail "Vaultwarden's sign-in got no answer"
