@@ -22,8 +22,8 @@ screenshots:
     caption: "Collaborate on code in Gitea"
     source: https://about.gitea.com/img/home-screenshot-2.png
 category: developer tools
-version: "28.3.0"
-release: 6
+version: "28.4.0"
+release: 7
 homepage: https://about.gitea.com
 license: AGPL-3.0-only
 appLicense: MIT
@@ -146,7 +146,7 @@ inputs:
 compose: |
   services:
     gitea:
-      image: gitea/gitea:28.3.0@sha256:8967bf9deaf3c5c4adae13519436dc1b20c646ac83fe37ae810c933a1045227d
+      image: gitea/gitea:28.4.0@sha256:aa90e8f00b755b0d665214ab9c14447ea44d3190dbe6b6d0cb46cd9c4f55d309
       restart: unless-stopped
       environment:
         GITEA__database__DB_TYPE: sqlite3

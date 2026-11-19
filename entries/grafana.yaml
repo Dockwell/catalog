@@ -19,8 +19,8 @@ screenshots:
     caption: "A dashboard of system metrics in Grafana"
     source: https://raw.githubusercontent.com/grafana/grafana/905a2379d5e165f3240846c25d9a679b23d9f51f/public/img/dashboard-library/dashboard_library_1.jpg
 category: monitoring
-version: "13.3.0"
-release: 4
+version: "13.3.1"
+release: 5
 homepage: https://grafana.com/oss/grafana/
 license: AGPL-3.0-only
 appLicense: AGPL-3.0-only
@@ -51,7 +51,7 @@ inputs:
 compose: |
   services:
     grafana:
-      image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
+      image: grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf
       restart: unless-stopped
       environment:
         GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}

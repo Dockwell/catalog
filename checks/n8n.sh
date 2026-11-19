@@ -42,15 +42,66 @@ n8n_owner_made() {
   fail "Dockwell didn't make n8n's owner within 5 minutes: it reads $owner_state"
 }
 
+# Publish a workflow that needs a credential encrypted by this install. A
+# successful request after the upgrade proves the saved workflow can still
+# run and decrypt the same credential.
+n8n_publish_proof_workflow() {
+  local url=$1 login_jar=$2 credential workflow workflow_id version_id
+
+  n8n_api() {
+    curl --ipv4 -fsS --max-time 20 -b "$login_jar" -H 'Content-Type: application/json' "$@"
+  }
+
+  credential=$(
+    jq -cn --arg secret "${kept[n8n-proof-header]}" \
+      '{name:"Dockwell proof header", type:"httpHeaderAuth", data:{name:"X-Dockwell-Proof", value:$secret}}' |
+      n8n_api --data-binary @- "$url/rest/credentials" |
+      jq -er '.data.id | select(type == "string" and length > 0)'
+  ) || fail "n8n did not create the test workflow credential"
+  workflow=$(
+    jq -cn --arg credential "$credential" '{
+      name: "Dockwell upgrade proof",
+      nodes: [
+        {
+          id:"8c4c081d-96d4-4c26-b413-6da026d6ed46", name:"Webhook", type:"n8n-nodes-base.webhook",
+          typeVersion:2, position:[0,0], webhookId:"ea6be8dc-66e0-4a2e-bdbd-53905de3bfca",
+          parameters:{httpMethod:"GET",path:"dockwell-upgrade-proof",authentication:"headerAuth",
+            responseMode:"lastNode",responseData:"firstEntryJson",options:{}},
+          credentials:{httpHeaderAuth:{id:$credential,name:"Dockwell proof header"}}
+        },
+        {
+          id:"ac005813-613d-4591-b7d1-87d8dc19c1ae", name:"Proof result", type:"n8n-nodes-base.set",
+          typeVersion:3.4, position:[220,0],
+          parameters:{mode:"manual",assignments:{assignments:[
+            {id:"25b9e5eb-15ff-4a45-9ab0-e41a87de4690",name:"upgradeProof",type:"string",value:"kept-through-upgrade"}
+          ]},options:{}}
+        }
+      ],
+      connections:{Webhook:{main:[[{node:"Proof result",type:"main",index:0}]]}},
+      settings:{executionOrder:"v1"}
+    }' | n8n_api --data-binary @- "$url/rest/workflows"
+  ) || fail "n8n did not create the test workflow"
+  workflow_id=$(jq -er '.data.id | select(type == "string" and length > 0)' <<<"$workflow") ||
+    fail "n8n did not return the test workflow ID"
+  version_id=$(jq -er '.data.versionId | select(type == "string" and length > 0)' <<<"$workflow") ||
+    fail "n8n did not return the test workflow version"
+  jq -cn --arg version "$version_id" '{versionId: $version}' |
+    n8n_api --data-binary @- "$url/rest/workflows/$workflow_id/activate" >/dev/null ||
+    fail "n8n did not publish the test workflow"
+}
+
 check_n8n() {
-  local port said owner
+  local port said owner url owner_password login_jar
   port=$(value PORT)
+  url="http://localhost:$port"
   said=$(curl -fsS --max-time 10 "http://127.0.0.1:$port/healthz/readiness") || fail "n8n isn't ready on port $port, with its database"
   [[ "$(jq -r .status <<<"$said")" == ok ]] || fail "n8n says it's $said"
   owner='{"email":"owner@example.com","password":"E2e-owner-passw0rd"}'
   n8n_sign_in() {
-    curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
-      -d "$(jq -c --arg p "$1" '{emailOrLdapLoginId: .email, password: $p}' <<<"$owner")" "http://127.0.0.1:$port/rest/login"
+    local password=$1
+    shift
+    curl --ipv4 -sS --max-time 15 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' "$@" \
+      -d "$(jq -c --arg p "$password" '{emailOrLdapLoginId: .email, password: $p}' <<<"$owner")" "$url/rest/login"
   }
   if n8n_owner_made; then
     said=$(curl -fsS --max-time 15 "http://127.0.0.1:$port/rest/settings") || fail "n8n's settings got no answer"
@@ -65,6 +116,26 @@ check_n8n() {
       -d "$(jq -c '. + {firstName: "Owner", lastName: "Example"}' <<<"$owner")" "http://127.0.0.1:$port/rest/owner/setup") || fail "n8n's owner setup got no answer"
     [[ "$said" == 200 ]] || fail "n8n didn't make its owner: it answered $said"
   fi
-  [[ "$(n8n_sign_in "$(jq -r .password <<<"$owner")")" == 200 ]] || fail "n8n's owner can't sign in"
+  owner_password=$(jq -r .password <<<"$owner")
+  if [[ "$1" == first ]]; then
+    kept[n8n-proof-header]=$(openssl rand -hex 24) || fail "Could not generate the n8n test credential"
+    (
+      login_jar=$(mktemp) || fail "Could not create a cookie jar for n8n"
+      trap 'rm -f -- "$login_jar"' EXIT
+      [[ "$(n8n_sign_in "$owner_password" -c "$login_jar")" == 200 ]] || fail "n8n's owner can't sign in"
+      n8n_publish_proof_workflow "$url" "$login_jar"
+    )
+  else
+    [[ "$(n8n_sign_in "$owner_password")" == 200 ]] || fail "n8n's owner can't sign in"
+  fi
   [[ "$(n8n_sign_in not-the-password)" == 401 ]] || fail "n8n didn't refuse a wrong password"
+
+  said=$(curl --ipv4 -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+    -H 'X-Dockwell-Proof: wrong' "$url/webhook/dockwell-upgrade-proof") ||
+    fail "n8n's test webhook did not answer"
+  [[ "$said" == 403 ]] || fail "n8n's test webhook answered $said to a wrong credential"
+  curl --ipv4 -fsS --max-time 20 -H "X-Dockwell-Proof: ${kept[n8n-proof-header]}" \
+    "$url/webhook/dockwell-upgrade-proof" |
+    jq -e '.upgradeProof == "kept-through-upgrade"' >/dev/null ||
+    fail "n8n did not run the test workflow with its saved credential"
 }
