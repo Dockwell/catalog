@@ -15,8 +15,8 @@ features:
   - "Works with a tunnel in your Cloudflare account"
   - "Runs as a background connector"
 category: networking
-version: "2026.10.3"
-release: 3
+version: "2026.10.7"
+release: 4
 homepage: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 license: AGPL-3.0-only
 appLicense: Apache-2.0
@@ -33,7 +33,7 @@ inputs:
 compose: |
   services:
     tunnel:
-      image: cloudflare/cloudflared:2026.10.3@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39
+      image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
       restart: unless-stopped
       network_mode: host
       command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
