@@ -15,7 +15,7 @@ features:
   - "A user for each app, in its own database"
   - "Persistent database storage"
 category: databases
-version: "8.3.13"
+version: "8.3.17"
 release: 3
 homepage: https://www.mongodb.com
 license: AGPL-3.0-only
@@ -34,7 +34,7 @@ databases: [db]
 compose: |
   services:
     db:
-      image: mongo:8.3.13@sha256:e16e606f792ea89d2b4907b54e5e31eb86a7a23e27231dce3a982cc8f2d73cd2
+      image: mongo:8.3.17@sha256:05b334b0a7a78fe913caac0cd2e1ecccf4da515d9a3a44be911b6ea3734c17cd
       restart: unless-stopped
       environment:
         MONGO_INITDB_ROOT_USERNAME: root
