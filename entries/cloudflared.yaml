@@ -16,7 +16,7 @@ features:
   - "Runs as a background connector"
 category: networking
 version: "2026.11.1"
-release: 4
+release: 5
 homepage: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 license: AGPL-3.0-only
 appLicense: Apache-2.0
