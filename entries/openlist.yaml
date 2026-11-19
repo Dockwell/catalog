@@ -19,8 +19,8 @@ screenshots:
     caption: "A file preview in OpenList, with its Open with menu"
     source: https://raw.githubusercontent.com/OpenListTeam/OpenList-Docs/4613ff71087b58d8df9924fc403b716f6c25fa73/public/img/config/open-with.png
 category: storage
-version: "4.2.9"
-release: 2
+version: "4.2.10"
+release: 3
 homepage: https://oplist.org
 license: AGPL-3.0-only
 appLicense: AGPL-3.0-only
@@ -41,7 +41,7 @@ inputs:
 compose: |
   services:
     openlist:
-      image: openlistteam/openlist:v4.2.9@sha256:897563beb674e7ad04edff14b0037dc8443ca3978570614005519df7eae06434
+      image: openlistteam/openlist:v4.2.10@sha256:a014c4d7c9ea4960a57eb22d0541c1753d141016846e8e0f67f3547d573d4547
       restart: unless-stopped
       # The image creates data as root, then switches to UID 1001. A fresh named
       # volume inherits that owner. Root here reaches only this app's data volume.
