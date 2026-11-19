@@ -87,7 +87,20 @@ n8n_publish_proof_workflow() {
     fail "n8n did not return the test workflow version"
   jq -cn --arg version "$version_id" '{versionId: $version}' |
     n8n_api --data-binary @- "$url/rest/workflows/$workflow_id/activate" >/dev/null ||
-    fail "n8n did not publish the test workflow"
+    fail "n8n did not accept the test workflow publication"
+
+  # Activation returns while n8n's publication worker registers the webhook.
+  local publication
+  for _ in $(seq 45); do
+    publication=$(n8n_api "$url/rest/workflows/$workflow_id/publication-status") ||
+      fail "Could not read the n8n workflow publication status"
+    if jq -e --arg version "$version_id" \
+      '.data.status == "published" and .data.liveVersionId == $version' <<<"$publication" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "n8n's test workflow did not go live. Publication status: $(jq -r '.data.status // "unknown"' <<<"$publication")"
 }
 
 check_n8n() {
