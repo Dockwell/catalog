@@ -33,12 +33,14 @@ check_mongo() {
   if [[ "$1" == first ]]; then
     if [[ "$version" == 8.3.* ]]; then
       # A same-major upgrade from 8.0 can leave 8.3 running with FCV 8.0.
-      mongo 'assert.commandWorked(db.adminCommand({setFeatureCompatibilityVersion:"8.0",confirm:true}))' >/dev/null ||
+      mongo 'db.adminCommand({setFeatureCompatibilityVersion:"8.0",confirm:true})' >/dev/null ||
         fail "MongoDB could not prepare an 8.3 source with FCV 8.0"
     fi
     kept[mongo-release]="${version%.*}"
     kept[mongo-fcv]=$(mongo 'print(db.adminCommand({getParameter:1,featureCompatibilityVersion:1}).featureCompatibilityVersion.version)') ||
       fail "Could not read the source MongoDB feature compatibility version"
+    [[ "$version" != 8.3.* || "${kept[mongo-fcv]}" == 8.0 ]] ||
+      fail "MongoDB 8.3 source kept FCV ${kept[mongo-fcv]}, expected 8.0"
     said=$(mongo 'print(db.getSiblingDB("e2e").kept.insertOne({ kept: true }).acknowledged)') || fail "MongoDB can't keep a document: $said"
   else
     expected_fcv=${kept[mongo-fcv]}
