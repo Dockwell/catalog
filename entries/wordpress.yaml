@@ -20,7 +20,7 @@ screenshots:
     source: https://wordpress.org/documentation/files/2019/03/block-editor-overview-6.7-1536x869.jpg
 category: cms
 version: "7.1.3"
-release: 5
+release: 6
 homepage: https://wordpress.org
 license: AGPL-3.0-only
 appLicense: GPL-2.0-or-later
@@ -30,8 +30,11 @@ source:
 web:
   service: wordpress
 firstVisitorOwns: true
+addressVariables:
+  - service: wordpress
+    variable: WORDPRESS_CONFIG_EXTRA
+    value: "define('WP_HOME', '{origin}'); define('WP_SITEURL', '{origin}');"
 notes:
-  - "Keeps the address it was set up at until you change it under Settings, General."
   - "Updates itself, its themes and its plugins from its dashboard; an upgrade here moves PHP and Apache on."
 inputs:
   - name: PORT
