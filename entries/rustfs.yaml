@@ -19,8 +19,8 @@ screenshots:
     caption: "Manage object storage in the RustFS console"
     source: https://github.com/user-attachments/assets/7ee40bb4-3e46-4eac-b0d0-5fbeb85ff8f3
 category: storage
-version: "1.0.6"
-release: 5
+version: "1.0.7"
+release: 6
 homepage: https://rustfs.com
 license: AGPL-3.0-only
 appLicense: Apache-2.0
@@ -56,7 +56,7 @@ inputs:
 compose: |
   services:
     rustfs:
-      image: rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+      image: rustfs/rustfs:1.0.7@sha256:69bd3c4d8d79b74723bfd68c9fbd9085155d4d4b44a5a136d87502f3075cc68c
       restart: unless-stopped
       environment:
         RUSTFS_ACCESS_KEY: ${ACCESS_KEY}
