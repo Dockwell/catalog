@@ -22,8 +22,8 @@ screenshots:
     caption: "Pair devices and connect coding agents in T3 Code setup"
     source: https://raw.githubusercontent.com/dizys/t3code-docker/a6831ef592a26a301ed7a7052111874a04ef7e8f/docs/media/setup-light.png
 category: ai
-version: "0.28.7"
-release: 6
+version: "0.28.8"
+release: 7
 homepage: https://github.com/dizys/t3code-docker
 license: AGPL-3.0-only
 appLicense: MIT
@@ -49,7 +49,7 @@ inputs:
 compose: |
   services:
     t3code:
-      image: ghcr.io/dizys/t3code-docker:0.28.7-browser@sha256:9eb4d0e18e04b984012ba5a37c340a08ef1dd37da8aa691eb5550a4d6181784c
+      image: ghcr.io/dizys/t3code-docker:0.28.8-browser@sha256:9c1cfd7b2dc0e3823ebc259ed7a6a8c293ad8ef4baa77506fc5bd89549526054
       restart: unless-stopped
       stop_grace_period: 30s
       shm_size: 1g
