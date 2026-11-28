@@ -22,8 +22,8 @@ screenshots:
     caption: "Proxy hosts, streams and access lists at a glance"
     source: https://raw.githubusercontent.com/NginxProxyManager/nginx-proxy-manager/5b7e34eb67d35aa91dd3fe3818525caa42cfeca5/docs/src/public/screenshots/light/03_dashboard.png
 category: networking
-version: "2.16.0"
-release: 4
+version: "2.17.1"
+release: 5
 homepage: https://nginxproxymanager.com
 license: AGPL-3.0-only
 appLicense: MIT
@@ -65,7 +65,7 @@ inputs:
 compose: |
   services:
     proxy:
-      image: jc21/nginx-proxy-manager:2.16.0@sha256:4393e642e233e5efd5adeb7f10918d4aaea71c9ed875b94190273fc8e87f9594
+      image: jc21/nginx-proxy-manager:2.17.1@sha256:04a9d0835560b9719ab577275f84fe1f713298a1c1e2bdefa034b87f10e062e1
       restart: unless-stopped
       environment:
         INITIAL_ADMIN_EMAIL: ${ADMIN_EMAIL}
